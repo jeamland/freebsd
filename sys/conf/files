@@ -4853,3 +4853,5 @@ xdr/xdr_mbuf.c			optional krpc | nfslockd | nfscl | nfsd
 xdr/xdr_mem.c			optional krpc | nfslockd | nfscl | nfsd
 xdr/xdr_reference.c		optional krpc | nfslockd | nfscl | nfsd
 xdr/xdr_sizeof.c		optional krpc | nfslockd | nfscl | nfsd
+
+msgbus/msgbus_proto.c		optional msgbus

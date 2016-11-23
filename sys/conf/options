@@ -996,3 +996,6 @@ EKCD		opt_ekcd.h
 
 # NVME options
 NVME_USE_NVD	opt_nvme.h
+
+# AF_MSGBUS support
+MSGBUS		opt_global.h
