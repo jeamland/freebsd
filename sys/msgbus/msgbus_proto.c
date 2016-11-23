@@ -6,6 +6,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/domain.h>
 #include <sys/lock.h>
 #include <sys/kernel.h>
+#include <sys/malloc.h>		/* XXX must be before <sys/file.h> */
 #include <sys/msgbus.h>
 #include <sys/mutex.h>
 #include <sys/protosw.h>
@@ -33,6 +34,9 @@ static struct pr_usrreqs msgbus_usrreqs;
 static u_long	msgbus_sendspace = PIPSIZ;	/* really max datagram size */
 static u_long	msgbus_recvspace = PIPSIZ;
 
+static uint64_t	msgbus_address = 0;
+static struct mtx msgbus_address_lock;
+
 static struct protosw msgbussw[] = {
 {
 	.pr_type =		SOCK_SEQPACKET,
@@ -52,6 +56,8 @@ static struct domain msgbusdomain = {
 
 DOMAIN_SET(msgbus);
 
+/* Domain Methods */
+
 static void
 msgbus_init(void)
 {
@@ -64,6 +70,23 @@ msgbus_init(void)
 	uma_zone_set_max(msgbuspcb_zone, maxsockets);
 	uma_zone_set_warning(msgbuspcb_zone,
 	    "kern.ipc.maxsockets limit reached");
+
+	mtx_init(&msgbus_address_lock, "msgbus address", MTX_DEF, 0);
+}
+
+/* Protocol Methods */
+
+static uint64_t
+msgbus_next_address(void)
+{
+	uint64_t	address;
+
+	mtx_lock(&msgbus_address_lock);
+	address = msgbus_address;
+	msgbus_address++;
+	mtx_unlock(&msgbus_address_lock);
+
+	return (address);
 }
 
 static int
@@ -95,6 +118,7 @@ msgbus_attach(struct socket *so, int proto, struct thread *td)
 		return (ENOBUFS);
 	MSGBUS_PCB_LOCK_INIT(mbp);
 	mbp->mbp_socket = so;
+	mbp->mbp_address = msgbus_next_address();
 	so->so_pcb = mbp;
 
 	return (0);
@@ -115,8 +139,27 @@ msgbus_detach(struct socket *so)
 	uma_zfree(msgbuspcb_zone, mbp);
 }
 
+static int
+msgbus_sockaddr(struct socket *so, struct sockaddr **nam)
+{
+	struct msgbuspcb *mbp;
+	struct sockaddr_msgbus *smb;
+
+	mbp = sotomsgbuspcb(so);
+	KASSERT(mbp != NULL, ("msgbus_sockaddr: mbp == NULL"));
+
+	*nam = malloc(sizeof(struct sockaddr_msgbus), M_SONAME, M_WAITOK);
+	smb = (struct sockaddr_msgbus *)*nam;
+	smb->smb_len = sizeof(struct sockaddr_msgbus);
+	smb->smb_family = AF_MSGBUS;
+	smb->smb_address = mbp->mbp_address;
+
+	return (0);
+}
+
 static struct pr_usrreqs msgbus_usrreqs = {
-	.pru_attach = msgbus_attach,
-	.pru_detach = msgbus_detach,
+	.pru_attach =	msgbus_attach,
+	.pru_detach =	msgbus_detach,
+	.pru_sockaddr =	msgbus_sockaddr,
 };
 
