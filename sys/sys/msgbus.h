@@ -21,9 +21,12 @@ struct sockaddr_msgbus {
 #ifdef _KERNEL
 
 struct msgbuspcb {
+	LIST_ENTRY(msgbuspcb) mbp_link;
 	struct		socket *mbp_socket;
-	uint64_t	mbp_address;
+	struct		sockaddr_msgbus mbp_name;
 	struct		mtx mbp_mtx;
+
+#define	mbp_address	mbp_name.smb_address
 };
 
 #define	sotomsgbuspcb(so)	((struct msgbuspcb *)((so)->so_pcb))
