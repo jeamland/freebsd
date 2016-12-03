@@ -518,6 +518,18 @@ struct sockcred {
 };
 
 /*
+ * Security token (used by AF_MSGBUS)
+ *
+ * This may look a bit like cmsgcred but will eventually look more unique.
+ * For example we may want to include some kind of capability token.
+ */
+struct sectoken {
+	pid_t	st_pid;			/* PID of sending process */
+	uid_t	st_uid;			/* real user id */
+	uid_t	st_euid;		/* effective user id */
+};
+
+/*
  * Compute size of a sockcred structure with groups.
  */
 #define	SOCKCREDSIZE(ngrps) \
@@ -567,6 +579,7 @@ struct sockcred {
 #define	SCM_REALTIME	0x05		/* timestamp (struct timespec) */
 #define	SCM_MONOTONIC	0x06		/* timestamp (struct timespec) */
 #define	SCM_TIME_INFO	0x07		/* timestamp info */
+#define	SCM_SECTOKEN	0x08		/* security token (struct sectoken) */
 
 struct sock_timestamp_info {
 	__uint32_t	st_info_flags;

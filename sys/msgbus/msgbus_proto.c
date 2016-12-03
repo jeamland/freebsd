@@ -10,6 +10,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/mbuf.h>
 #include <sys/msgbus.h>
 #include <sys/mutex.h>
+#include <sys/proc.h>
 #include <sys/protosw.h>
 #include <sys/queue.h>
 #include <sys/socket.h>
@@ -24,6 +25,7 @@ static uma_zone_t	msgbuspcb_zone;
 static struct mbp_head	mbp_shead;
 
 static void	msgbus_init(void);
+static int	msgbus_externalize(struct mbuf *, struct mbuf **, int);
 
 static struct domain msgbusdomain;
 static struct pr_usrreqs msgbus_usrreqs;
@@ -51,6 +53,7 @@ static struct domain msgbusdomain = {
 	.dom_family =		AF_MSGBUS,
 	.dom_name =		"msg",
 	.dom_init =		msgbus_init,
+	.dom_externalize =	msgbus_externalize,
 	.dom_protosw =		msgbussw,
 	.dom_protoswNPROTOSW =	&msgbussw[nitems(msgbussw)]
 };
@@ -91,6 +94,52 @@ msgbus_init(void)
 
 	MSGBUS_LIST_LOCK_INIT();
 	MSGBUS_ADDRESS_LOCK_INIT();
+}
+
+static int
+msgbus_externalize(struct mbuf *control, struct mbuf **controlp, int flags)
+{
+	struct cmsghdr *cm = mtod(control, struct cmsghdr *);
+	void *data;
+	socklen_t clen = control->m_len, datalen;
+	int error;
+
+	error = 0;
+	if (controlp != NULL) /* controlp == NULL => free control messages */
+		*controlp = NULL;
+	while (cm != NULL) {
+		if (sizeof(*cm) > clen || cm->cmsg_len > clen) {
+			error = EINVAL;
+			break;
+		}
+		data = CMSG_DATA(cm);
+		datalen = (caddr_t)cm + cm->cmsg_len - (caddr_t)data;
+		if (error || controlp == NULL)
+			goto next;
+		*controlp = sbcreatecontrol(NULL, datalen,
+		    cm->cmsg_type, cm->cmsg_level);
+		if (*controlp == NULL) {
+			error = ENOBUFS;
+			goto next;
+		}
+		bcopy(data,
+		    CMSG_DATA(mtod(*controlp, struct cmsghdr *)),
+		    datalen);
+		controlp = &(*controlp)->m_next;
+
+next:
+		if (CMSG_SPACE(datalen) < clen) {
+			clen -= CMSG_SPACE(datalen);
+			cm = (struct cmsghdr *)
+			    ((caddr_t)cm + CMSG_SPACE(datalen));
+		} else {
+			clen = 0;
+			cm = NULL;
+		}
+	}
+
+	m_freem(control);
+	return (error);
 }
 
 /* Protocol Methods */
@@ -179,6 +228,8 @@ msgbus_send(struct socket *so, int flags, struct mbuf *m, struct sockaddr *nam,
 	struct socket *so2;
 	struct sockaddr *from;
 	struct sockaddr_msgbus *to;
+	struct sectoken *token;
+	struct timeval *tv;
 	u_int mbcnt, sbcc;
 	int error = 0;
 
@@ -206,11 +257,35 @@ msgbus_send(struct socket *so, int flags, struct mbuf *m, struct sockaddr *nam,
 		goto release;
 	}
 
-	/* Lockless read. */
+	/* Lockless read. XXX needs to check receive end instead */
 	if (so->so_snd.sb_state & SBS_CANTSENDMORE) {
 		error = EPIPE;
 		goto release;
 	}
+
+	/* Build up security token. */
+	control = sbcreatecontrol(NULL, sizeof(*token), SCM_SECTOKEN,
+	    SOL_SOCKET);
+	if (control == NULL) {
+		error = ENOBUFS;
+		goto release;
+	}
+	token = (struct sectoken *)
+	    CMSG_DATA(mtod(control, struct cmsghdr *));
+	token->st_pid = td->td_proc->p_pid;
+	token->st_uid = td->td_ucred->cr_ruid;
+	token->st_euid = td->td_ucred->cr_uid;
+
+	/* Add timestamp. */
+	control->m_next = sbcreatecontrol(NULL, sizeof(*tv),
+	    SCM_TIMESTAMP, SOL_SOCKET);
+	if (control->m_next == NULL) {
+		error = ENOBUFS;
+		goto release;
+	}
+	tv = (struct timeval *)
+	    CMSG_DATA(mtod(control->m_next, struct cmsghdr *));
+	microtime(tv);
 
 	MSGBUS_LIST_LOCK();
 	LIST_FOREACH(mbp2, &mbp_shead, mbp_link) {
@@ -234,6 +309,7 @@ msgbus_send(struct socket *so, int flags, struct mbuf *m, struct sockaddr *nam,
 	 * Unix domain sockets only check for space in the
 	 * sending sockbuf, and that check is performed one
 	 * level up the stack.
+	 * XXX This isn't a UNIX socket.
 	 */
 	if (sbappendaddr_nospacecheck_locked(&so2->so_rcv, from, m, control))
 		control = NULL;
