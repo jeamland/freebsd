@@ -132,7 +132,6 @@ md_init(void)
 	STAILQ_FOREACH(disk, &md_list, entries) {
 		printf("md%d at %p (%d bytes%s)\n", unit, disk->addr,
 		    disk->size, preloaded ? ", preloaded" : "");
-		printf("md%d: %08x\n", unit, *(uint32_t *)(disk->addr + 0x4255c));
 		preloaded = 0;
 	}
 	return (0);
