@@ -179,7 +179,7 @@ md_strategy(void *devdata, int rw, daddr_t blk, size_t size,
 	if (rsize != NULL)
 		*rsize = size;
 
-	switch (rw) {
+	switch (rw & (F_READ | F_WRITE)) {
 	case F_READ:
 		bcopy(disk->addr + ofs, buf, size);
 		return (0);
