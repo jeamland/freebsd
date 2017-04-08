@@ -42,12 +42,12 @@
 		.set MEM_BTX_OFFSET,MEM_PAGE_SIZE # offset of BTX in the loader
 		.set MEM_BTX_CLIENT,0xa000	# where BTX clients live
 		.set MEM_BIOS_KEYBOARD,0x496	# BDA byte with keyboard bit
-		.set MEM_CS,0x0200
-		.set MEM_ORG,MEM_CS<<4		# Our code entry
+		.set MEM_CS,0x0200		# Segment to move our code to
+		.set MEM_ORG,MEM_CS<<4		# Address of code segment
 		.set MEM_LOADER,0x100000	# Where the loader is
-		.set MEM_SS,0x0100
-		.set MEM_SP,0x0f00
-		.set MEM_BZARGS,(MEM_SS<<4) + MEM_SP
+		.set MEM_SS,0x0100		# Where our stack will be
+		.set MEM_SP,0x0f00		# Stack pointer
+		.set MEM_BZARGS,(MEM_SS<<4) + MEM_SP # Where we'll put the args
 /*
  * a.out header fields
  */
@@ -85,34 +85,34 @@ cmdline:	.zero 497
 /*
  * The bzImage header itself.
  */
-setup_sects:	.byte 2
-root_flags:	.word 0
-syssize:	.word 0
-swap_dev:	.word 0
-ram_size:	.word 0
-vid_mode:	.word 0
-root_dev:	.word 0
-boot_flag:	.word 0xaa55
+setup_sects:	.byte 2		# How many sectors of boot code we have
+root_flags:	.word 0		# Root filesystem flags, unused
+syssize:	.word 0		# Size of 32-bit code, unused
+swap_dev:	.word 0		# Swap device, unused
+ram_size:	.word 0		# RAM size, unused
+vid_mode:	.word 0		# video mode, unused
+root_dev:	.word 0		# Root device, unused
+boot_flag:	.word 0xaa55	# Boot flag (magic number)
 
-_start:		jmp start
+_start:		jmp start	# jmp instruction
 
-		.ascii "HdrS"
-		.word 0x0203
+		.ascii "HdrS"	# Magic signature
+		.word 0x0203	# Linux/x86 boot protocol version (2.03)
 
-realmode_swtch:	.word 0, 0
-start_sys_seg:	.word 0x1000
-version_ptr:	.word bzldr_version-0x200
-type_of_loader:	.byte 0
-loadflags:	.byte 0x1
-setup_move_size:.word 0
-code32_start:	.long 0x100000
-ramdisk_image:	.long 0
-ramdisk_size:	.long 0
-bootsect_kludge:.word 0, 0
-heap_end_ptr:	.word 0
-pad1:		.word 0
-cmd_line_ptr:	.long 0
-ramdisk_max:	.long 0xffffffff
+realmode_swtch:	.word 0, 0	# Boot loader hook, unused
+start_sys_seg:	.word 0x1000	# Load-low segment, obsolete
+version_ptr:	.word bzldr_version-0x200 # Offset of our version string
+type_of_loader:	.byte 0		# Boot loader indentifier
+loadflags:	.byte 0x1	# Load flags
+setup_move_size:.word 0		# Move to high memory size, unused
+code32_start:	.long 0x100000	# Boot loader hook
+ramdisk_image:	.long 0		# Ramdisk image address
+ramdisk_size:	.long 0		# Ramdisk size
+bootsect_kludge:.word 0, 0	# Unused
+heap_end_ptr:	.word 0		# Free memory after setup end, unused
+pad1:		.word 0		# Extended boot loader info, unused
+cmd_line_ptr:	.long 0		# Pointer to command line
+initrd_addr_max: .long 0xffffffff # Highest legal ramdisk address
 
 b_esdi:		.long 0
 b_edx:		.long 0
@@ -128,26 +128,30 @@ bzldr_version:	.asciz "bzImage Loader"
 start:		movw $welcome_msg, %si		# %ds:(%si) -> welcome message
 		callw putstr			# display the welcome message
 
-		movw $MEM_CS, %ax
-		movw %ax, %es
-		movzx setup_sects, %cx
-		inc %cx
-		shl $7, %cx
-		xor %si, %si
-		xor %di, %di
-		mov %si, %fs
-		cld
-		rep movsl
-		mov %ax, %ds
-		ljmp $MEM_CS, $next
+/*
+ * The Linux/x86 boot protocol places us at 0x10000 which is right where
+ * loader itself is going to end up located. Move ourselves somewhere safer.
+ */
+		movw $MEM_CS, %ax		# load new code segment
+		movw %ax, %es			# %es -> new code segment
+		movzx setup_sects, %cx		# load sector count
+		inc %cx				# add one for the boot sector
+		shl $7, %cx			# convert to longs
+		xor %si, %si			# zero %si
+		xor %di, %di			# zero %di
+		mov %si, %fs			# zero %fs (why?)
+		cld				# increment mode?
+		rep movsl			# copy code to new segment
+		mov %ax, %ds			# %ds -> new code segment
+		ljmp $MEM_CS, $next		# long jump to new code segment
 
 next:
 /*
  * Copy the command line somewhere that's easier to get to.
  */
-		movw $MEM_SS, %ax		# Stack setup.
-		movw %ax, %ss
-		movw $MEM_SP, %sp
+		movw $MEM_SS, %ax		# load stack segment
+		movw %ax, %ss			# use stack segment
+		movw $MEM_SP, %sp		# set up stack pointer
 
 		xor %di, %di			# Zero %di so we're pointing
 						# at the start of our segment
@@ -159,66 +163,70 @@ next:
 		mov %ax, %si			# Move low word to %si
 		shr $4, %eax			# Convert the rest to segment
 		and $0x000f, %si		# Starting offset only
-		mov %ax, %gs
+		mov %ax, %gs			# %gs -> command line segment
 		mov $496, %cx			# Max number of bytes in cmdline
-copycmd:	gs lodsb
-		and %al, %al
-		jz endcmd
-		stosb
-		jmp copycmd
+copycmd:	gs lodsb			# load command line char
+		and %al, %al			# check for NULL
+		jz endcmd			# done if NULL
+		stosb				# store command line char
+		jmp copycmd			# next char
 
 /*
  * Print the command line.
  */
-endcmd:		movw $cmdstart_msg, %si
-		callw putstr
-		movw $cmdline, %si
-		callw putstr
-		movw $cmdend_msg, %si
-		callw putstr
+endcmd:		movw $cmdstart_msg, %si		# load cmdline preamble msg
+		callw putstr			# print it
+		movw $cmdline, %si		# load cmdline itself
+		callw putstr			# print it
+		movw $cmdend_msg, %si		# load cmdline postamble msg
+		callw putstr			# print it
 
 /*
  * Print out initrd address and size.
  */
-		movw $rdstart_msg, %si
-		callw putstr
-		movl (ramdisk_image), %eax
-		callw puthex
-		movw $rdsize_msg, %si
-		callw putstr
-		movl (ramdisk_size), %eax
-		callw puthex
-		movw $rdend_msg, %si
-		callw putstr
+		movw $rdstart_msg, %si		# load ramdisk preamble msg
+		callw putstr			# print it
+		movl (ramdisk_image), %eax	# load ramdisk address
+		callw puthex			# print it
+		movw $rdsize_msg, %si		# load ramdisk size preamble msg
+		callw putstr			# print it
+		movl (ramdisk_size), %eax	# load ramdisk size
+		callw puthex			# print it
+		movw $rdend_msg, %si		# load ramdisk postamble msg
+		callw putstr			# print it
 
-		movw $MEM_ARG, %bx
-		movw %bx, %di
-		xorl %eax, %eax
-		movw $(MEM_ARG_SIZE/4), %cx
-		rep stosl
+/*
+ * Zero out the boot args structure.
+ */
+		movw $MEM_ARG, %bx		# load boot arguments address
+		movw %bx, %di			# put it in %di
+		xorl %eax, %eax			# zero %eax
+		movw $(MEM_ARG_SIZE/4), %cx	# load size in longs to %cx
+		rep stosl			# zero out the boot arguments
 		orb $KARGS_FLAGS_BZARGS, BA_BOOTFLAGS(%bx)
+						# Flag that we have bzImage args
 
-		movl $MEM_BZARGS, %edx
-		movl %edx, 0x10(%bx)
-		movl %edx, %edi
-		xorw %ax, %ax
-		movw %ax, %es
+		movl $MEM_BZARGS, %edx		# Load bz arg structure address
+		movl %edx, 0x10(%bx)		# Store bz arg address in boot args
+		movl %edx, %edi			# Load bz arg address to %edi
+		xorw %ax, %ax			# Zero %ax
+		movw %ax, %es			# Store in %es
 
-		movl $cmdline, %eax
-		addl $MEM_ORG, %eax
-		stosl
-		movl (ramdisk_image), %eax
-		stosl
-		movl (ramdisk_size), %eax
-		stosl
+		movl $cmdline, %eax		# Load command line address
+		addl $MEM_ORG, %eax		# Add start address
+		stosl				# Store in bz args
+		movl (ramdisk_image), %eax	# Load ramdisk address
+		stosl				# Store in bz args
+		movl (ramdisk_size), %eax	# Lod ramdisk size
+		stosl				# Store in bzards
 
-		movw $MEM_CS, %ax
-		movw %ax, %es
+		movw $MEM_CS, %ax		# Load our base segment
+		movw %ax, %es			# Move it to %es
 
-		callw seta20
+		callw seta20			# Enable A20
 
-		movw $relocate_msg, %si
-		callw putstr
+		movw $relocate_msg, %si		# Load relocate msg address
+		callw putstr			# print it
 
 		lgdt gdtdesc
 		cli
