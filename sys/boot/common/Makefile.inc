@@ -47,8 +47,8 @@ SRCS+=  bcache.c
 
 .if defined(MD_IMAGE_SIZE)
 CFLAGS+= -DMD_IMAGE_SIZE=${MD_IMAGE_SIZE}
-SRCS+=	md.c
 .endif
+SRCS+=	md.c
 
 # Machine-independant ISA PnP
 .if defined(HAVE_ISABUS)

@@ -330,4 +330,7 @@ time_t	time(time_t *tloc);
 #define __CTASSERT(x, y)        typedef char __assert ## y[(x) ? 1 : -1]
 #endif
 
+extern struct devsw md_dev;
+int	md_add(void *, size_t);
+
 #endif /* !_BOOTSTRAP_H_ */
