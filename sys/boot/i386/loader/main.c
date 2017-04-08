@@ -298,7 +298,6 @@ extract_currdev(void)
 
     loaddev = getenv("loaddev");
     if (loaddev != NULL) {
-	printf("loaddev is %s\n", loaddev);
 	unsetenv("loaddev");
 	env_setenv("currdev", EV_VOLATILE, loaddev, i386_setcurrdev,
 		   env_nounset);
