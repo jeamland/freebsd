@@ -206,6 +206,9 @@ endcmd:		movw $cmdstart_msg, %si		# load cmdline preamble msg
 		orb $KARGS_FLAGS_BZARGS, BA_BOOTFLAGS(%bx)
 						# Flag that we have bzImage args
 
+/*
+ * Set up bz args structure and add it in to boot args.
+ */
 		movl $MEM_BZARGS, %edx		# Load bz arg structure address
 		movl %edx, 0x10(%bx)		# Store bz arg address in boot args
 		movl %edx, %edi			# Load bz arg address to %edi
@@ -223,17 +226,24 @@ endcmd:		movw $cmdstart_msg, %si		# load cmdline preamble msg
 		movw $MEM_CS, %ax		# Load our base segment
 		movw %ax, %es			# Move it to %es
 
-		callw seta20			# Enable A20
+/*
+ * Turn on the A20 address line
+ */
+		callw seta20			# Turn A20 on
 
-		movw $relocate_msg, %si		# Load relocate msg address
-		callw putstr			# print it
+/*
+ * Relocate the loader and BTX using a very lazy protected mode
+ */
+		movw $relocate_msg, %si		# Display the
+		callw putstr			#  relocation message
 
-		lgdt gdtdesc
-		cli
-		movl %cr0, %eax
-		orb $0x1, %al
-		movl %eax, %cr0
-		ljmpl $SEL_SCODE, $(pm_start + MEM_ORG)
+		lgdt gdtdesc			# setup our own gdt
+		cli				# turn off interrupts
+		movl %cr0, %eax			# Turn on
+		orb $0x1, %al			#  protected
+		movl %eax, %cr0			#  mode
+		ljmp $SEL_SCODE,$(pm_start+MEM_ORG) # long jump to clear the
+						#  instruction pre-fetch queue
 
 		.code32
 pm_start:	movw $SEL_SDATA, %ax
