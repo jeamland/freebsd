@@ -246,40 +246,48 @@ endcmd:		movw $cmdstart_msg, %si		# load cmdline preamble msg
 						#  instruction pre-fetch queue
 
 		.code32
-pm_start:	movw $SEL_SDATA, %ax
-		movw %ax, %ds
-		movw %ax, %es
-		movl MEM_LOADER + AOUT_ENTRY, %edi
-		movl $(MEM_LOADER + AOUT_HEADER), %esi
-		movl MEM_LOADER + AOUT_TEXT, %ecx
-		rep movsb
-		addl $(MEM_PAGE_SIZE - 1), %edi
-		andl $~(MEM_PAGE_SIZE - 1), %edi
-		movl MEM_LOADER + AOUT_DATA, %ecx
-		rep movsb
-		movl MEM_LOADER + AOUT_BSS, %ecx
-		xorl %eax, %eax
-		addb $3, %cl
-		shrl $2, %ecx
-		rep stosl
-		movl MEM_LOADER + AOUT_ENTRY, %edx
-		movl %edx, %esi
-		movl %edx, aout_entry + MEM_ORG
-		addl $MEM_BTX_OFFSET, %esi
-		movl $MEM_BTX_ADDRESS, %edi
-		movzwl 0xa(%esi), %ecx
-		rep movsb
-		ljmp $SEL_SCODE16, $(pm_16 + MEM_ORG)
+pm_start:	movw $SEL_SDATA, %ax		# Initialize
+		movw %ax, %ds			#  %ds and
+		movw %ax, %es			#  %es to a flat selector
+		movl MEM_LOADER+AOUT_ENTRY, %edi # %edi is the destination
+		movl $(MEM_LOADER+AOUT_HEADER), %esi # %esi is
+						#  the start of the text
+						#  segment
+		movl MEM_LOADER+AOUT_TEXT, %ecx # %ecx = length of the text
+						#  segment
+		rep				# Relocate the
+		movsb				#  text segment
+		addl $(MEM_PAGE_SIZE - 1), %edi	# pad %edi out to a new page
+		andl $~(MEM_PAGE_SIZE - 1), %edi #  for the data segment
+		movl MEM_LOADER+AOUT_DATA, %ecx	# size of the data segment
+		rep				# Relocate the
+		movsb				#  data segment
+		movl MEM_LOADER+AOUT_BSS, %ecx	# size of the bss
+		xorl %eax, %eax			# zero %eax
+		addb $3, %cl			# round %ecx up to
+		shrl $2, %ecx			#  a multiple of 4
+		rep				# zero the
+		stosl				#  bss
 
+		movl MEM_LOADER+AOUT_ENTRY, %edx # %edx -> relocated loader
+		movl %edx, %esi			# %esi -> relocated loader
+		movl %edx, aout_entry+MEM_ORG	# store entry address for later
+		addl $MEM_BTX_OFFSET, %esi	# %esi -> BTX in the loader
+		movl $MEM_BTX_ADDRESS, %edi	# %edi -> where BTX needs to go
+		movzwl 0xa(%esi), %ecx		# %ecx -> length of BTX
+		rep				# Relocate
+		movsb				#  BTX
+		ljmp $SEL_SCODE16, $(pm_16+MEM_ORG) # Jump to 16-bit PM
 		.code16
-pm_16:		movw $SEL_RDATA, %ax
-		movw %ax, %ds
-		movw %ax, %es
-		movl %cr0, %eax
-		andb $~0x1, %al
-		movl %eax, %cr0
-		ljmp $MEM_CS,$pm_end
-pm_end:		sti
+pm_16:		movw $SEL_RDATA, %ax		# Initialize
+		movw %ax, %ds			#  %ds and
+		movw %ax, %es			#  %es to a real mode selector
+		movl %cr0, %eax			# Turn off
+		andb $~0x1, %al			#  protected
+		movl %eax, %cr0			#  mode
+		ljmp $MEM_CS,$pm_end		# Long jump to clear the
+						#  instruction pre-fetch queue
+pm_end:		sti				# Turn interrupts back on now
 		movw $MEM_CS, %ax
 		movw %ax, %ds
 		xorw %ax, %ax
