@@ -1,0 +1,107 @@
+.\" Copyright (c) 1999 Doug White
+.\" Copyright (c) 2017 EMC Corp.
+.\" All rights reserved.
+.\"
+.\" Redistribution and use in source and binary forms, with or without
+.\" modification, are permitted provided that the following conditions
+.\" are met:
+.\" 1. Redistributions of source code must retain the above copyright
+.\"    notice, this list of conditions and the following disclaimer.
+.\" 2. Redistributions in binary form must reproduce the above copyright
+.\"    notice, this list of conditions and the following disclaimer in the
+.\"    documentation and/or other materials provided with the distribution.
+.\"
+.\" THIS SOFTWARE IS PROVIDED BY THE AUTHORS AND CONTRIBUTORS ``AS IS'' AND
+.\" ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+.\" IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE
+.\" ARE DISCLAIMED.  IN NO EVENT SHALL THE AUTHORS OR CONTRIBUTORS BE LIABLE
+.\" FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+.\" DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS
+.\" OR SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION)
+.\" HOWEVER CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+.\" LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY
+.\" OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF
+.\" SUCH DAMAGE.
+.\"
+.\" $FreeBSD$
+.\"
+.Dd April 8, 2017
+.Dt BZBOOT 8
+.Os
+.Sh NAME
+.Nm bzboot
+.Nd bzImage bootloader
+.Sh DESCRIPTION
+The
+.Nm
+bootloader is a modified version of the system third-stage bootstrap
+.Xr loader 8
+configured to boot via bootloaders that support the Linux kernel bzImage
+format.
+This allows command line arguments and memory disks to be passed in to
+the loader environment by bootloaders such as iPXE, allowing network booting
+mechanisms involving more reliable TCP-based protocols such as HTTP.
+.Pp
+The
+.Nm
+binary is loaded via another boot loader such as iPXE or GRUB.
+Below is a sample iPXE script that will load an MFSBSD image and pass it as
+a memory disk to the loader:
+.Bd -literal -offset indent
+#!ipxe
+
+dhcp
+kernel http://my.web.server/bzboot loaddev=md0p2:
+initrd http://my.web.server/mfsbsd.img
+boot
+
+.Ed
+.Pp
+.Nm
+interprets any command line arguments as name=value pairs separated by spaces.
+No attempt is made to escape spaces so spaces are not permitted in variable
+names or values.
+All variables will be placed into the loader environment and will thus be
+passed through into the kernel environment.
+As
+.Nm
+is largely similar to
+.Xr loader 8
+it will default to trying to boot from local disks. This can be overridden by
+passing an argument defining
+.Va loaddev
+which will be used as the default boot device.
+.Pp
+In all other respects,
+.Nm
+acts just like
+.Xr loader 8 .
+.Pp
+.Nm
+implements version 2.03 of the Linux/x86 boot protocol.
+More information on the Linux/x86 boot protocol and the bzImage format can be
+found at
+.Li https://github.com/torvalds/linux/blob/master/Documentation/x86/boot.txt .
+More information on iPXE can be found at
+.Li http://ipxe.org .
+.Sh SEE ALSO
+.Xr loader 8
+.Sh HISTORY
+The
+.Nm
+bootloader first appeared in
+.Fx 12.0 .
+.Sh AUTHORS
+.An -nosplit
+The
+.Nm
+bootloader was written by
+.An Benno Rice Aq benno@FreeBSD.org .
+This manual page was written by
+.An Benno Rice Aq benno@FreeBSD.org .
+The work was sponsored by Dell EMC.
+.Sh
+The command line parsing should have a mechanism to escape spaces in values.
+.Pp
+It should not be necessary to pass a command line variable to boot off a
+memory disk.

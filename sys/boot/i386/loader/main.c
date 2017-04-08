@@ -66,6 +66,7 @@ static struct bootinfo	*initial_bootinfo;
 
 struct arch_switch	archsw;		/* MI/MD interface boundary */
 
+static void		process_cmdline(const char *);
 static void		extract_currdev(void);
 static int		isa_inb(int port);
 static void		isa_outb(int port, int value);
@@ -121,6 +122,18 @@ main(void)
 	heap_top = (void *)PTOV(bios_basemem);
 	heap_bottom = (void *)end;
     }
+
+    if (kargs->bootflags & KARGS_FLAGS_BZARGS) {
+        struct bzargs *bzargs = (struct bzargs *)PTOV(kargs->reserved);
+        if ((void *)bzargs->ramdisk_addr != NULL) {
+            void *ramdisk_addr = PTOV(bzargs->ramdisk_addr);
+            size_t heap_shift = (size_t)heap_top - (size_t)ramdisk_addr;
+            if ((size_t)heap_bottom - heap_shift > 0x100000) {
+                heap_bottom -= heap_shift;
+                heap_top -= heap_shift;
+            }
+        }
+    }
     setheap(heap_bottom, heap_top);
 
     /*
@@ -160,6 +173,18 @@ main(void)
 	    pxe_enable(kargs->pxeinfo ? PTOV(kargs->pxeinfo) : NULL);
 	else if (kargs->bootflags & KARGS_FLAGS_CD)
 	    bc_add(initial_bootdev);
+	else if (kargs->bootflags & KARGS_FLAGS_BZARGS) {
+	    struct bzargs *bzargs = (struct bzargs *)PTOV(kargs->reserved);
+	    const char *cmdline = (const char *)PTOV(bzargs->cmdline);
+	    printf("Command line: %p->\"%s\"\n", cmdline, cmdline);
+	    printf("Ramdisk:      %p(%p)[+%x]\n", (void *)bzargs->ramdisk_addr, (void *)PTOV(bzargs->ramdisk_addr), bzargs->ramdisk_size);
+	    if (bzargs->ramdisk_addr != 0) {
+		md_add(PTOV(bzargs->ramdisk_addr), bzargs->ramdisk_size);
+	    }
+	    if (bzargs->cmdline != 0) {
+		process_cmdline((const char *)PTOV(bzargs->cmdline));
+	    }
+	}
     }
 
     archsw.arch_autoload = i386_autoload;
@@ -238,6 +263,23 @@ main(void)
     return (1);
 }
 
+static void
+process_cmdline(const char *cmdline)
+{
+	char	*copy, *string, *entry;
+
+	copy = string = strdup(cmdline);
+	if (copy == NULL)
+		return;
+
+	while ((entry = strsep(&string, " ")) != NULL) {
+		printf("cmdline entry: %s\n", entry);
+		putenv(entry);
+	}
+
+	free(copy);
+}
+
 /*
  * Set the 'current device' by (if possible) recovering the boot device as
  * supplied by the initial bootstrap.
@@ -252,6 +294,17 @@ extract_currdev(void)
     char			buf[20];
 #endif
     int				biosdev = -1;
+    char			*loaddev;
+
+    loaddev = getenv("loaddev");
+    if (loaddev != NULL) {
+	printf("loaddev is %s\n", loaddev);
+	unsetenv("loaddev");
+	env_setenv("currdev", EV_VOLATILE, loaddev, i386_setcurrdev,
+		   env_nounset);
+	env_setenv("loaddev", EV_VOLATILE, loaddev, env_noset, env_nounset);
+	return;
+    }
 
     /* Assume we are booting from a BIOS disk by default */
     new_currdev.d_dev = &biosdisk;

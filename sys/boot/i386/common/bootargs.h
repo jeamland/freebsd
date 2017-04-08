@@ -22,6 +22,7 @@
 #define	KARGS_FLAGS_PXE		0x2
 #define	KARGS_FLAGS_ZFS		0x4
 #define	KARGS_FLAGS_EXTARG	0x8	/* variably sized extended argument */
+#define	KARGS_FLAGS_BZARGS	0x10
 
 #define	BOOTARGS_SIZE	24	/* sizeof(struct bootargs) */
 #define	BA_BOOTFLAGS	8	/* offsetof(struct bootargs, bootflags) */
@@ -86,6 +87,12 @@ struct geli_boot_args
 #endif
         };
     };
+};
+
+struct bzargs {
+	uint32_t		cmdline;
+	uint32_t		ramdisk_addr;
+	uint32_t		ramdisk_size;
 };
 
 #endif /*__ASSEMBLER__*/

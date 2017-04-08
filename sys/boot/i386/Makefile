@@ -6,7 +6,7 @@ SUBDIR=		mbr pmbr boot0 boot0sio btx boot2 cdboot gptboot \
 		libi386 libfirewire loader
 
 # special boot programs, 'self-extracting boot2+loader'
-SUBDIR+=	pxeldr
+SUBDIR+=	pxeldr bzldr
 
 .if ${MACHINE_CPUARCH} == "i386"
 SUBDIR+=	kgzldr

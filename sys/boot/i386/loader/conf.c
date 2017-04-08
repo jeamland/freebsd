@@ -53,6 +53,7 @@ extern struct devsw fwohci;
 struct devsw *devsw[] = {
     &bioscd,
     &biosdisk,
+    &md_dev,
 #if defined(LOADER_NFS_SUPPORT) || defined(LOADER_TFTP_SUPPORT)
     &pxedisk,
 #endif
