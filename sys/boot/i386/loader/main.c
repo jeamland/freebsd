@@ -263,21 +263,25 @@ main(void)
     return (1);
 }
 
+/*
+ * Process a command line received from some outer boot environment. This
+ * is parsed as a set of key=value stanzas separated by spaces.
+ */
 static void
 process_cmdline(const char *cmdline)
 {
-	char	*copy, *string, *entry;
+    char	*copy, *string, *entry;
 
-	copy = string = strdup(cmdline);
-	if (copy == NULL)
-		return;
+    copy = string = strdup(cmdline);
+    if (copy == NULL)
+	return;
 
-	while ((entry = strsep(&string, " ")) != NULL) {
-		printf("cmdline entry: %s\n", entry);
-		putenv(entry);
-	}
+    while ((entry = strsep(&string, " ")) != NULL) {
+	if (strlen(entry) > 0)
+	    putenv(entry);
+    }
 
-	free(copy);
+    free(copy);
 }
 
 /*
