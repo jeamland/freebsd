@@ -288,40 +288,58 @@ pm_16:		movw $SEL_RDATA, %ax		# Initialize
 		ljmp $MEM_CS,$pm_end		# Long jump to clear the
 						#  instruction pre-fetch queue
 pm_end:		sti				# Turn interrupts back on now
-		movw $MEM_CS, %ax
-		movw %ax, %ds
-		xorw %ax, %ax
-		movw %ax, %es
-		movw $MEM_BTX_CLIENT, %di
-		movw $btx_client, %si
-		movw $(btx_client_end - btx_client), %cx
-		rep movsb
+/*
+ * Copy the BTX client to MEM_BTX_CLIENT
+ */
+		movw $MEM_CS, %ax		# Load our segment
+		movw %ax, %ds			# ... into %ds
+		xorw %ax, %ax			# Load zero
+		movw %ax, %es			# ... into %es
+		movw $MEM_BTX_CLIENT, %di	# Prepare to relocate
+		movw $btx_client, %si		#  the simple btx client
+		movw $(btx_client_end-btx_client), %cx # length of btx client
+		rep				# Relocate the
+		movsb				#  simple BTX client
+/*
+ * Copy the boot[12] args to where the BTX client can see them
+ */
+		movw $MEM_ARG, %si		# where the args are at now
+		movw $MEM_ARG_BTX, %di		# where the args are moving to
+		movw $(MEM_ARG_SIZE/4), %cx	# size of the arguments in longs
+		rep				# Relocate
+		movsl				#  the words
+/*
+ * Save the entry point so the client can get to it later on
+ */
+		movl aout_entry, %eax		# load the entry point
+		stosl				# add it to the end of the
+						#  arguments
 
-		movw $MEM_ARG, %si
-		movw $MEM_ARG_BTX, %di
-		movw $(MEM_ARG_SIZE/4), %cx
-		rep movsl
-
-		movl aout_entry, %eax
-		stosl
-
-		movw $MEM_CS, %ax
-		movw %ax, %ds
-		movw %ax, %es
-		movw $done_msg, %si
-		callw putstr
-
-		xorw %ax, %ax
-		movw %ax, %ds
-		movw %ax, %es
-		ljmp $0, $MEM_BTX_ENTRY
+/*
+ * Now we just start up BTX and let it do the rest
+ */
+		movw $MEM_CS, %ax		# Load our code segment
+		movw %ax, %ds			# ... into %ds
+		movw %ax, %es			# ... and %es
+		movw $jump_message, %si		# Display the
+		callw putstr			#  jump message
+		xorw %ax, %ax			# Load zero
+		movw %ax, %ds			# ... into %ds
+		movw %ax, %es			# ... and %es
+		ljmp $0,$MEM_BTX_ENTRY		# Jump to the BTX entry point
 
 		.code16
-putc:		movw $0x7, %bx
-		movb $0xe, %ah
-		int $0x10
-		retw
+/*
+ * Print a character using the BIOS.
+ */
+putc:		movw $0x7,%bx			# attribute for output
+		movb $0xe,%ah			# BIOS: put_char
+		int $0x10			# call BIOS, print char in %al
+		retw				# return
 
+/*
+ * Display a null-terminated string
+ */
 putstr:		lodsb				# load %al from %ds:(%si)
 		testb %al,%al			# stop at null
 		jnz putstr0			# if the char != null, output it
@@ -329,25 +347,28 @@ putstr:		lodsb				# load %al from %ds:(%si)
 putstr0:	callw putc			# call BIOS, print char in %al
 		jmp putstr			# keep looping
 
-puthex:		movl %eax, %edx
-		xorl %eax, %eax
-		movb $'0', %al
-		callw putc
-		movb $'x', %al
-		callw putc
-		mov $8, %cx
-puthex0:	movl %edx, %eax
-		shrl $28, %eax
-		cmpb $0xa, %al
-		jl puthex1
-		addb $0x57, %al
-		jmp puthex2
-puthex1:	addb $0x30, %al
-puthex2:	callw putc
-		shll $4, %edx
-		sub $1, %cx
-		jnz puthex0
-		retw
+/*
+ * Display a 32-bit value as a hexadecimal value.
+ */
+puthex:		movl %eax, %edx			# put the number in %edx
+		xorl %eax, %eax			# zero %eax
+		movb $'0', %al			# move ASCII 0 into %al
+		callw putc			# print it
+		movb $'x', %al			# move ASCII x into %al
+		callw putc			# print it
+		mov $8, %cx			# we're printing 8 digits
+puthex0:	movl %edx, %eax			# copy number back to %eax
+		shrl $28, %eax			# get the highest 4 bits
+		cmpb $0xa, %al			# make it the correct
+		jl puthex1			# ASCII value
+		addb $0x57, %al			# by adding the right value
+		jmp puthex2			# depending on whether it's
+puthex1:	addb $0x30, %al			# greater or less than 10
+puthex2:	callw putc			# print the character
+		shll $4, %edx			# shift the number
+		sub $1, %cx			# done a character
+		jnz puthex0			# not done? go again
+		retw				# return
 
 /*
  * Enable A20. Put an upper limit on the amount of time we wait for the
@@ -417,7 +438,7 @@ rdstart_msg:	.asciz	"Ramdisk: "
 rdsize_msg:	.asciz	"+["
 rdend_msg:	.asciz	"]\r\n"
 relocate_msg:	.asciz	"Relocating the loader and the BTX\r\n"
-done_msg:	.asciz	"Done for now!\r\n"
+jump_message:	.asciz	"Starting the BTX loader\r\n"
 
 aout_entry:	.long	0
 
