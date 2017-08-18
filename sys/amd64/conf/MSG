@@ -1,0 +1,6 @@
+include GENERIC
+
+options		MSGBUS
+
+device	bvmconsole
+device	bvmdebug
