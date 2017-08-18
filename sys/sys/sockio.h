@@ -140,4 +140,9 @@
 #define	SIOCGIFRSSHASH	_IOWR('i', 151, struct ifrsshash)/* get the current RSS
 							type/func settings */
 
+/* AF_MSGBUS */
+#define	SIOCMBGADD	_IOWR('i', 160, struct mbgroupreq)
+#define	SIOCMBGREM	 _IOW('i', 161, struct mbgroupreq)
+#define	SIOCMBGDESTROY	 _IOW('i', 162, struct mbgroupreq)
+
 #endif /* !_SYS_SOCKIO_H_ */
