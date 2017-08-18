@@ -139,6 +139,7 @@ _LIBRARIES=	\
 		pam \
 		panel \
 		panelw \
+		pbuf \
 		pcap \
 		pcsclite \
 		pjdlog \
