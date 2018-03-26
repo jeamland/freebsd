@@ -388,16 +388,67 @@ zfs_purgedir(znode_t *dzp)
 	return (skipped);
 }
 
+/* XXX Temporary malloc type so we can check for leaks */
+MALLOC_DECLARE(M_UNEXT);
+MALLOC_DEFINE(M_UNEXT, "unlink extattr records",
+    "unlink extattr records but longer");
+
+struct unlink_extattr {
+	uint64_t	xattr_obj;
+	zfsvfs_t	*zfsvfs;
+};
+
+static uint64_t unlink_extattr_count = 0;
+SYSCTL_DECL(_vfs_zfs);
+SYSCTL_UQUAD(_vfs_zfs, OID_AUTO, unlink_extattr_count, CTLFLAG_RD, &unlink_extattr_count, 0, "magic stuff");
+
+static void
+zfs_unlink_extattr(void *arg)
+{
+	uint64_t	xattr_obj;
+	zfsvfs_t	*zfsvfs;
+	objset_t	*os;
+	znode_t		*xzp;
+	dmu_tx_t	*tx;
+	int		error;
+	struct unlink_extattr *ue;
+
+	ue = (struct unlink_extattr *)arg;
+	xattr_obj = ue->xattr_obj;
+	zfsvfs = ue->zfsvfs;
+	os = zfsvfs->z_os;
+
+	error = zfs_zget(zfsvfs, xattr_obj, &xzp);
+	ASSERT3S(error, ==, 0);
+	vn_lock(ZTOV(xzp), LK_EXCLUSIVE | LK_RETRY);
+
+	tx = dmu_tx_create(os);
+	dmu_tx_hold_zap(tx, zfsvfs->z_unlinkedobj, TRUE, NULL);
+	dmu_tx_hold_sa(tx, xzp->z_sa_hdl, B_FALSE);
+
+	error = dmu_tx_assign(tx, TXG_WAIT);
+
+	ASSERT(error == 0);
+	xzp->z_unlinked = B_TRUE;	/* mark xzp for deletion */
+	xzp->z_links = 0;		/* no more links to it */
+	VERIFY(0 == sa_update(xzp->z_sa_hdl, SA_ZPL_LINKS(zfsvfs),
+		&xzp->z_links, sizeof (xzp->z_links), tx));
+
+	dmu_tx_commit(tx);
+	free(ue, M_UNEXT);
+	unlink_extattr_count++;
+}
+
 void
 zfs_rmnode(znode_t *zp)
 {
 	zfsvfs_t	*zfsvfs = zp->z_zfsvfs;
 	objset_t	*os = zfsvfs->z_os;
-	znode_t		*xzp = NULL;
 	dmu_tx_t	*tx;
 	uint64_t	acl_obj;
-	uint64_t	xattr_obj;
+	uint64_t	xattr_obj = 0;
 	int		error;
+	struct unlink_extattr *ue;
 
 	ASSERT(zp->z_links == 0);
 	ASSERT_VOP_ELOCKED(ZTOV(zp), __func__);
@@ -441,13 +492,8 @@ zfs_rmnode(znode_t *zp)
 	 * If the file has extended attributes, we're going to unlink
 	 * the xattr dir.
 	 */
-	error = sa_lookup(zp->z_sa_hdl, SA_ZPL_XATTR(zfsvfs),
-	    &xattr_obj, sizeof (xattr_obj));
-	if (error == 0 && xattr_obj) {
-		error = zfs_zget(zfsvfs, xattr_obj, &xzp);
-		ASSERT3S(error, ==, 0);
-		vn_lock(ZTOV(xzp), LK_EXCLUSIVE | LK_RETRY);
-	}
+	sa_lookup(zp->z_sa_hdl, SA_ZPL_XATTR(zfsvfs), &xattr_obj,
+	    sizeof (xattr_obj));
 
 	acl_obj = zfs_external_acl(zp);
 
@@ -457,10 +503,6 @@ zfs_rmnode(znode_t *zp)
 	tx = dmu_tx_create(os);
 	dmu_tx_hold_free(tx, zp->z_id, 0, DMU_OBJECT_END);
 	dmu_tx_hold_zap(tx, zfsvfs->z_unlinkedobj, FALSE, NULL);
-	if (xzp) {
-		dmu_tx_hold_zap(tx, zfsvfs->z_unlinkedobj, TRUE, NULL);
-		dmu_tx_hold_sa(tx, xzp->z_sa_hdl, B_FALSE);
-	}
 	if (acl_obj)
 		dmu_tx_hold_free(tx, acl_obj, 0, DMU_OBJECT_END);
 
@@ -475,28 +517,37 @@ zfs_rmnode(znode_t *zp)
 		dmu_tx_abort(tx);
 		zfs_znode_dmu_fini(zp);
 		zfs_znode_free(zp);
-		goto out;
+		return;
 	}
 
-	if (xzp) {
-		ASSERT(error == 0);
-		xzp->z_unlinked = B_TRUE;	/* mark xzp for deletion */
-		xzp->z_links = 0;	/* no more links to it */
-		VERIFY(0 == sa_update(xzp->z_sa_hdl, SA_ZPL_LINKS(zfsvfs),
-		    &xzp->z_links, sizeof (xzp->z_links), tx));
-		zfs_unlinked_add(xzp, tx);
+	if (xattr_obj) {
+		/* Add extended attribute directory to the unlinked set. */
+		VERIFY3U(0, ==,
+		    zap_add_int(os, zfsvfs->z_unlinkedobj, xattr_obj, tx));
 	}
 
 	/* Remove this znode from the unlinked set */
 	VERIFY3U(0, ==,
-	    zap_remove_int(zfsvfs->z_os, zfsvfs->z_unlinkedobj, zp->z_id, tx));
+	    zap_remove_int(os, zfsvfs->z_unlinkedobj, zp->z_id, tx));
 
 	zfs_znode_delete(zp, tx);
 
 	dmu_tx_commit(tx);
-out:
-	if (xzp)
-		vput(ZTOV(xzp));
+
+	if (xattr_obj) {
+		/* Defer updating the extended attribute directory znode */
+		ue = malloc(sizeof(struct unlink_extattr), M_UNEXT,
+		    M_ZERO|M_WAITOK);
+		if (ue == NULL) {
+			return;
+		}
+
+		ue->xattr_obj = xattr_obj;
+		ue->zfsvfs = zfsvfs;
+
+		taskq_dispatch(dsl_pool_vnrele_taskq(dmu_objset_pool(os)),
+		    zfs_unlink_extattr, ue, TQ_SLEEP);
+	}
 }
 
 static uint64_t
