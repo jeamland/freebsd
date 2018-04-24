@@ -41,6 +41,7 @@ SUBDIR=	\
 	${_an} \
 	${_aout} \
 	${_apm} \
+	aqc \
 	${_arcmsr} \
 	${_allwinner} \
 	${_armv8crypto} \
