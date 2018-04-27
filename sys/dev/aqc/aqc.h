@@ -56,11 +56,17 @@
 #define	AQC_MAX_TXD	32
 
 struct aqc_softc {
-	device_t	dev;
-	if_ctx_t	ctx;
-	if_softc_ctx_t	scctx;
-	if_shared_ctx_t	sctx;
-	struct ifmedia	*media;
+	device_t		dev;
+	if_ctx_t		ctx;
+	if_softc_ctx_t		scctx;
+	if_shared_ctx_t		sctx;
+	struct ifmedia *	media;
+
+	int			mmio_rid;
+	struct resource *	mmio_res;
+	bus_space_tag_t		mmio_tag;
+	bus_space_handle_t	mmio_handle;
+	bus_size_t		mmio_size;
 };
 
 extern struct if_txrx aqc_txrx;

@@ -235,7 +235,7 @@ aqc_if_attach_pre(if_ctx_t ctx)
 {
 	struct aqc_softc *softc;
 	if_softc_ctx_t scctx;
-	int rc;
+	int rid, rc;
 
 	softc = iflib_get_softc(ctx);
 	rc = 0;
@@ -246,6 +246,32 @@ aqc_if_attach_pre(if_ctx_t ctx)
 	softc->scctx = iflib_get_softc_ctx(ctx);
 	softc->sctx = iflib_get_sctx(ctx);
 	scctx = softc->scctx;
+
+	pci_enable_busmaster(softc->dev);
+
+	softc->mmio_rid = PCIR_BAR(0);
+	softc->mmio_res = bus_alloc_resource_any(softc->dev, SYS_RES_MEMORY,
+	    &rid, RF_ACTIVE);
+	if (softc->mmio_res == NULL) {
+		device_printf(softc->dev,
+		    "failed to allocate MMIO resources\n");
+		rc = ENXIO;
+		goto fail;
+	}
+
+	softc->mmio_tag = rman_get_bustag(softc->mmio_res);
+	softc->mmio_handle = rman_get_bushandle(softc->mmio_res);
+	softc->mmio_size = rman_get_size(softc->mmio_res);
+
+	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	return (rc);
+
+fail:
+	if (softc->mmio_res != NULL)
+		bus_release_resource(softc->dev, SYS_RES_MEMORY,
+		    softc->mmio_rid, softc->mmio_res);
+
+	pci_disable_busmaster(softc->dev);
 
 	AQC_XXX_UNIMPLEMENTED_FUNCTION;
 	return (rc);
