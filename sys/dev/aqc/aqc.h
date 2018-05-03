@@ -36,13 +36,30 @@
 	    __FILE__, __LINE__);					\
 } while (0)
 
-#define	AQC_VENDOR_AQUANTIA	0x1d6a
+#define	AQC_VENDOR_ID_AQUANTIA	0x1d6a
 
-#define AQ_DEVICE_ID_AQC107	0x07B1
-#define AQ_DEVICE_ID_AQC108	0x08B1
+#define AQC_DEVICE_ID_0001	0x0001
+#define AQC_DEVICE_ID_D100	0xD100
+#define AQC_DEVICE_ID_D107	0xD107
+#define AQC_DEVICE_ID_D108	0xD108
+#define AQC_DEVICE_ID_D109	0xD109
 
-#define AQ_DEVICE_ID_AQC107S	0x87B1
-#define AQ_DEVICE_ID_AQC108S	0x88B1
+#define AQC_DEVICE_ID_AQC100	0x00B1
+#define AQC_DEVICE_ID_AQC107	0x07B1
+#define AQC_DEVICE_ID_AQC108	0x08B1
+#define AQC_DEVICE_ID_AQC109	0x09B1
+#define AQC_DEVICE_ID_AQC111	0x11B1
+#define AQC_DEVICE_ID_AQC112	0x12B1
+
+#define AQC_DEVICE_ID_AQC100S	0x80B1
+#define AQC_DEVICE_ID_AQC107S	0x87B1
+#define AQC_DEVICE_ID_AQC108S	0x88B1
+#define AQC_DEVICE_ID_AQC109S	0x89B1
+#define AQC_DEVICE_ID_AQC111S	0x91B1
+#define AQC_DEVICE_ID_AQC112S	0x92B1
+
+#define AQC_DEVICE_ID_AQC111E	0x51B1
+#define AQC_DEVICE_ID_AQC112E	0x52B1
 
 #define AQC_TSO_SIZE	UINT16_MAX
 
@@ -55,12 +72,23 @@
 #define	AQC_MAX_RXD	32
 #define	AQC_MAX_TXD	32
 
+struct aqc_caps;
+struct aqc_hw_ops;
+struct aqc_fw_ops;
+
 struct aqc_softc {
 	device_t		dev;
 	if_ctx_t		ctx;
 	if_softc_ctx_t		scctx;
 	if_shared_ctx_t		sctx;
 	struct ifmedia *	media;
+
+	struct aqc_hw_ops *	hw_ops;
+	struct aqc_fw_ops *	fw_ops;
+
+	struct aqc_caps *	caps;
+	uint32_t		chip_features;
+	uint32_t		mbox_addr;
 
 	int			mmio_rid;
 	struct resource *	mmio_res;

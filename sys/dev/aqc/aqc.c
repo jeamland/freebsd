@@ -30,6 +30,7 @@
 __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
+#include <sys/malloc.h>
 #include <sys/socket.h>
 #include <sys/kernel.h>
 #include <sys/bus.h>
@@ -58,18 +59,27 @@ __FBSDID("$FreeBSD$");
 #include "ifdi_if.h"
 
 #include "aqc.h"
+#include "aqc_hw.h"
+#include "aqc_fw.h"
+
+MALLOC_DEFINE(M_AQC, "aqc", "Aquantia");
 
 char aqc_driver_version[] = "1.0.0";
 
 static pci_vendor_info_t aqc_vendor_info_array[] = {
-	PVID(AQC_VENDOR_AQUANTIA, AQ_DEVICE_ID_AQC107,
-	    "aQuantia AQtion AQC107"),
-	PVID(AQC_VENDOR_AQUANTIA, AQ_DEVICE_ID_AQC107S,
-	    "aQuantia AQtion AQC107S"),
-	PVID(AQC_VENDOR_AQUANTIA, AQ_DEVICE_ID_AQC108,
-	    "aQuantia AQtion AQC108"),
-	PVID(AQC_VENDOR_AQUANTIA, AQ_DEVICE_ID_AQC108S,
-	    "aQuantia AQtion AQC108S"),
+	PVID(AQC_VENDOR_ID_AQUANTIA, AQC_DEVICE_ID_D107,
+	    "Aquantia AQtion 10Gbit Network Adapter"),
+	PVID(AQC_VENDOR_ID_AQUANTIA, AQC_DEVICE_ID_AQC107,
+	    "Aquantia AQtion 10Gbit Network Adapter"),
+	PVID(AQC_VENDOR_ID_AQUANTIA, AQC_DEVICE_ID_AQC107S,
+	    "Aquantia AQtion 10Gbit Network Adapter"),
+
+	PVID(AQC_VENDOR_ID_AQUANTIA, AQC_DEVICE_ID_D108,
+	    "Aquantia AQtion 5Gbit Network Adapter"),
+	PVID(AQC_VENDOR_ID_AQUANTIA, AQC_DEVICE_ID_AQC108,
+	    "Aquantia AQtion 5Gbit Network Adapter"),
+	PVID(AQC_VENDOR_ID_AQUANTIA, AQC_DEVICE_ID_AQC108S,
+	    "Aquantia AQtion 5Gbit Network Adapter"),
 
 	PVID_END
 };
@@ -235,7 +245,7 @@ aqc_if_attach_pre(if_ctx_t ctx)
 {
 	struct aqc_softc *softc;
 	if_softc_ctx_t scctx;
-	int rid, rc;
+	int rc;
 
 	softc = iflib_get_softc(ctx);
 	rc = 0;
@@ -247,11 +257,9 @@ aqc_if_attach_pre(if_ctx_t ctx)
 	softc->sctx = iflib_get_sctx(ctx);
 	scctx = softc->scctx;
 
-	pci_enable_busmaster(softc->dev);
-
 	softc->mmio_rid = PCIR_BAR(0);
 	softc->mmio_res = bus_alloc_resource_any(softc->dev, SYS_RES_MEMORY,
-	    &rid, RF_ACTIVE);
+	    &softc->mmio_rid, RF_ACTIVE|RF_SHAREABLE);
 	if (softc->mmio_res == NULL) {
 		device_printf(softc->dev,
 		    "failed to allocate MMIO resources\n");
@@ -263,18 +271,99 @@ aqc_if_attach_pre(if_ctx_t ctx)
 	softc->mmio_handle = rman_get_bushandle(softc->mmio_res);
 	softc->mmio_size = rman_get_size(softc->mmio_res);
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
-	return (rc);
+	softc->caps = malloc(sizeof(struct aqc_caps), M_AQC, M_WAITOK);
+	if (softc->caps == NULL) {
+		rc = ENOMEM;
+		goto fail;
+	}
+
+	/* Look up ops and caps. */
+	if ((rc = aqc_hw_probe(softc)) != 0) {
+		device_printf(softc->dev, "hardware probe failed\n");
+		goto fail;
+	}
+	if ((rc = aqc_fw_probe(softc)) != 0) {
+		device_printf(softc->dev, "firmware probe failed\n");
+		goto fail;
+	}
+	
+	/* Fill in scctx stuff. */
+	/* XXX THIS STUFF IS NOT RIGHT YET */
+	#if 0
+	iflib_set_mac(ctx, softc->func.mac_addr);
+
+	scctx->isc_txrx = &bnxt_txrx;
+	scctx->isc_tx_csum_flags = (CSUM_IP | CSUM_TCP | CSUM_UDP |
+	    CSUM_TCP_IPV6 | CSUM_UDP_IPV6 | CSUM_TSO);
+	scctx->isc_capenable =
+	    /* These are translated to hwassit bits */
+	    IFCAP_TXCSUM | IFCAP_TXCSUM_IPV6 | IFCAP_TSO4 | IFCAP_TSO6 |
+	    /* These are checked by iflib */
+	    IFCAP_LRO | IFCAP_VLAN_HWFILTER |
+	    /* These are part of the iflib mask */
+	    IFCAP_RXCSUM | IFCAP_RXCSUM_IPV6 | IFCAP_VLAN_MTU |
+	    IFCAP_VLAN_HWTAGGING | IFCAP_VLAN_HWTSO |
+	    /* These likely get lost... */
+	    IFCAP_VLAN_HWCSUM | IFCAP_JUMBO_MTU;
+	
+	if (bnxt_wol_supported(softc))
+		scctx->isc_capenable |= IFCAP_WOL_MAGIC;
+	
+	/* Now set up iflib sc */
+	scctx->isc_tx_nsegments = 31,
+	scctx->isc_tx_tso_segments_max = 31;
+	scctx->isc_tx_tso_size_max = BNXT_TSO_SIZE;
+	scctx->isc_tx_tso_segsize_max = BNXT_TSO_SIZE;
+	scctx->isc_vectors = softc->func.max_cp_rings;
+	scctx->isc_min_frame_size = BNXT_MIN_FRAME_SIZE;
+	scctx->isc_txrx = &bnxt_txrx;
+
+	if (scctx->isc_nrxd[0] <
+	    ((scctx->isc_nrxd[1] * 4) + scctx->isc_nrxd[2]))
+		device_printf(softc->dev,
+		    "WARNING: nrxd0 (%d) should be at least 4 * nrxd1 (%d) + nrxd2 (%d).  Driver may be unstable\n",
+		    scctx->isc_nrxd[0], scctx->isc_nrxd[1], scctx->isc_nrxd[2]);
+	if (scctx->isc_ntxd[0] < scctx->isc_ntxd[1] * 2)
+		device_printf(softc->dev,
+		    "WARNING: ntxd0 (%d) should be at least 2 * ntxd1 (%d).  Driver may be unstable\n",
+		    scctx->isc_ntxd[0], scctx->isc_ntxd[1]);
+	scctx->isc_txqsizes[0] = sizeof(struct cmpl_base) * scctx->isc_ntxd[0];
+	scctx->isc_txqsizes[1] = sizeof(struct tx_bd_short) *
+	    scctx->isc_ntxd[1];
+	scctx->isc_rxqsizes[0] = sizeof(struct cmpl_base) * scctx->isc_nrxd[0];
+	scctx->isc_rxqsizes[1] = sizeof(struct rx_prod_pkt_bd) *
+	    scctx->isc_nrxd[1];
+	scctx->isc_rxqsizes[2] = sizeof(struct rx_prod_pkt_bd) *
+	    scctx->isc_nrxd[2];
+
+	scctx->isc_nrxqsets_max = min(pci_msix_count(softc->dev)-1,
+	    softc->fn_qcfg.alloc_completion_rings - 1);
+	scctx->isc_nrxqsets_max = min(scctx->isc_nrxqsets_max,
+	    softc->fn_qcfg.alloc_rx_rings);
+	scctx->isc_nrxqsets_max = min(scctx->isc_nrxqsets_max,
+	    softc->fn_qcfg.alloc_vnics);
+	scctx->isc_ntxqsets_max = min(softc->fn_qcfg.alloc_tx_rings,
+	    softc->fn_qcfg.alloc_completion_rings - scctx->isc_nrxqsets_max - 1);
+
+	scctx->isc_rss_table_size = HW_HASH_INDEX_SIZE;
+	scctx->isc_rss_table_mask = scctx->isc_rss_table_size - 1;
+	#endif
+
+	/* iflib will map and release this bar */
+	scctx->isc_msix_bar = pci_msix_table_bar(softc->dev);
+	/* XXX END OF THIS STUFF IS NOT RIGHT YET */
+
+	// return (rc);
 
 fail:
+	if (softc->caps != NULL)
+		free(softc->caps, M_AQC);
+
 	if (softc->mmio_res != NULL)
 		bus_release_resource(softc->dev, SYS_RES_MEMORY,
 		    softc->mmio_rid, softc->mmio_res);
 
-	pci_disable_busmaster(softc->dev);
-
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
-	return (rc);
+	return (ENXIO);
 }
 
 static int
@@ -288,6 +377,7 @@ aqc_if_attach_post(if_ctx_t ctx)
 	ifp = iflib_get_ifp(ctx);
 	rc = 0;
 
+	device_printf(softc->dev, "hi there\n");
 	AQC_XXX_UNIMPLEMENTED_FUNCTION;
 	return (rc);
 }
