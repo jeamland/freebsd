@@ -70,7 +70,7 @@ aqc_isc_txd_encap(void *arg, if_pkt_info_t pi)
 {
 
 	AQC_XXX_UNIMPLEMENTED_FUNCTION;
-	return (0);
+	return (EIO);
 }
 
 static void
@@ -85,7 +85,7 @@ aqc_isc_txd_credits_update(void *arg, uint16_t txqid, bool clear)
 {
 
 	AQC_XXX_UNIMPLEMENTED_FUNCTION;
-	return (0);
+	return (EIO);
 }
 
 static void
@@ -107,7 +107,7 @@ aqc_isc_rxd_available(void *arg, uint16_t rxqid, qidx_t idx, qidx_t budget)
 {
 
 	AQC_XXX_UNIMPLEMENTED_FUNCTION;
-	return (0);
+	return (EIO);
 }
 
 static int
@@ -115,6 +115,6 @@ aqc_isc_rxd_pkt_get(void *arg, if_rxd_info_t ri)
 {
 
 	AQC_XXX_UNIMPLEMENTED_FUNCTION;
-	return (0);
+	return (EIO);
 }
 

@@ -60,33 +60,33 @@ static int
 aqc_a0_probe_caps(struct aqc_softc *softc)
 {
 
-	*softc->caps = a0_base_caps;
+	softc->caps = a0_base_caps;
 
 	switch (pci_get_device(softc->dev)) {
 	case AQC_DEVICE_ID_D100:
-		softc->caps->media_type = AQC_MEDIA_TYPE_FIBRE;
-		softc->caps->link_speeds =
+		softc->caps.media_type = AQC_MEDIA_TYPE_FIBRE;
+		softc->caps.link_speeds =
 		    AQC_LINK_SPEED_ALL & ~AQC_LINK_SPEED_10G;
 		return (0);
 		break;
 	
 	case AQC_DEVICE_ID_0001:
 	case AQC_DEVICE_ID_D107:
-		softc->caps->media_type = AQC_MEDIA_TYPE_TP;
-		softc->caps->link_speeds = AQC_LINK_SPEED_ALL;
+		softc->caps.media_type = AQC_MEDIA_TYPE_TP;
+		softc->caps.link_speeds = AQC_LINK_SPEED_ALL;
 		return (0);
 		break;
 	
 	case AQC_DEVICE_ID_D108:
-		softc->caps->media_type = AQC_MEDIA_TYPE_TP;
-		softc->caps->link_speeds =
+		softc->caps.media_type = AQC_MEDIA_TYPE_TP;
+		softc->caps.link_speeds =
 		    AQC_LINK_SPEED_ALL & ~AQC_LINK_SPEED_10G;
 		return (0);
 		break;
 	
 	case AQC_DEVICE_ID_D109:
-		softc->caps->media_type = AQC_MEDIA_TYPE_TP;
-		softc->caps->link_speeds = AQC_LINK_SPEED_ALL & 
+		softc->caps.media_type = AQC_MEDIA_TYPE_TP;
+		softc->caps.link_speeds = AQC_LINK_SPEED_ALL & 
 		    ~(AQC_LINK_SPEED_10G | AQC_LINK_SPEED_5G);
 		return (0);
 		break;

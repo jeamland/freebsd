@@ -31,7 +31,6 @@ __FBSDID("$FreeBSD$");
 
 #include <sys/param.h>
 #include <sys/kernel.h>
-#include <sys/endian.h>
 #include <sys/socket.h>
 
 #include <net/if.h>
@@ -51,6 +50,14 @@ __FBSDID("$FreeBSD$");
 #define	AQC_FW_2X_RATE_1G	0x100
 #define	AQC_FW_2X_RATE_100M	0x020
 
+#define	AQC_FW_2X_RATE_MASK	(	\
+	AQC_FW_2X_RATE_100M	|	\
+	AQC_FW_2X_RATE_1G	|	\
+	AQC_FW_2X_RATE_2G5	|	\
+	AQC_FW_2X_RATE_5G	|	\
+	AQC_FW_2X_RATE_10G		\
+)
+
 static int
 aqc_fw_2x_init(struct aqc_softc *softc)
 {
@@ -67,53 +74,15 @@ aqc_fw_2x_init(struct aqc_softc *softc)
 static int
 aqc_fw_2x_permanent_mac(struct aqc_softc *softc, uint8_t *mac)
 {
-	int error;
-	uint32_t efuse_addr, mac_buffer[2];
+	uint32_t efuse_addr;
 
-	efuse_addr = aqc_hw_read(softc, AQC_REG_MPI_EFUSE_ADDR);
+	efuse_addr = aqc_hw_read(softc, AQC_REG_MPI_FW_2X_EFUSE_ADDR);
 	if (efuse_addr == 0) {
 		device_printf(softc->dev, "unable to read MAC address\n");
 		return (EIO);
 	}
 
-	/* XXX magic number */
-	error = aqc_fw_copyin(softc, efuse_addr + (40 * 4), 2, mac_buffer);
-	if (error != 0)
-		return (error);
-
-	mac_buffer[0] = bswap32(mac_buffer[0]);
-	mac_buffer[1] = bswap32(mac_buffer[1]);
-
-	bcopy(mac_buffer, mac, 6);
-
-	return (0);
-}
-
-static int
-aqc_fw_2x_set_link_speed(struct aqc_softc *softc, uint32_t speed)
-{
-	u_int32_t	rate_mask;
-
-	rate_mask = 0;
-
-	if ((speed & AQC_LINK_SPEED_10G) != 0)
-		rate_mask |= AQC_FW_2X_RATE_10G;
-
-	if ((speed & AQC_LINK_SPEED_5G) != 0)
-		rate_mask |= AQC_FW_2X_RATE_5G;
-
-	if ((speed & AQC_LINK_SPEED_2G5) != 0)
-		rate_mask |= AQC_FW_2X_RATE_2G5;
-
-	if ((speed & AQC_LINK_SPEED_1G) != 0)
-		rate_mask |= AQC_FW_2X_RATE_1G;
-
-	if ((speed & AQC_LINK_SPEED_100M) != 0)
-		rate_mask |= AQC_FW_2X_RATE_100M;
-
-	aqc_hw_write(softc, AQC_REG_MPI_CONTROL, rate_mask);
-
-	return (0);
+	return (aqc_fw_copy_mac_from_efuse(softc, efuse_addr, mac));
 }
 
 static int
@@ -124,26 +93,58 @@ aqc_fw_2x_set_state(struct aqc_softc *softc, enum aqc_fw_state state)
 }
 
 static int
-aqc_fw_2x_update_link_status(struct aqc_softc *softc)
+aqc_fw_2x_set_link_speed(struct aqc_softc *softc, uint32_t speed)
 {
+	uint32_t	rate_mask;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
-	return (EOPNOTSUPP);
+	rate_mask = 0;
+
+	if ((speed & AQC_LINK_10G) != 0)
+		rate_mask |= AQC_FW_2X_RATE_10G;
+
+	if ((speed & AQC_LINK_5G) != 0)
+		rate_mask |= AQC_FW_2X_RATE_5G;
+
+	if ((speed & AQC_LINK_2G5) != 0)
+		rate_mask |= AQC_FW_2X_RATE_2G5;
+
+	if ((speed & AQC_LINK_1G) != 0)
+		rate_mask |= AQC_FW_2X_RATE_1G;
+
+	if ((speed & AQC_LINK_100M) != 0)
+		rate_mask |= AQC_FW_2X_RATE_100M;
+
+	aqc_hw_write(softc, AQC_REG_MPI_CONTROL, rate_mask);
+
+	return (0);
 }
 
-static int
-aqc_fw_2x_update_stats(struct aqc_softc *softc)
+static uint32_t
+aqc_fw_2x_get_link_speed(struct aqc_softc *softc)
 {
+	uint32_t speed;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
-	return (EOPNOTSUPP);
+	speed = aqc_hw_read(softc, AQC_REG_MPI_FW_2X_STATE);
+	speed = speed & AQC_FW_2X_RATE_MASK;
+
+	if (speed & AQC_FW_2X_RATE_10G)
+		return (AQC_LINK_10G);
+	else if (speed & AQC_FW_2X_RATE_5G)
+		return (AQC_LINK_5G);
+	else if (speed & AQC_FW_2X_RATE_2G5)
+		return (AQC_LINK_2G5);
+	else if (speed & AQC_FW_2X_RATE_1G)
+		return (AQC_LINK_1G);
+	else if (speed & AQC_FW_2X_RATE_100M)
+		return (AQC_LINK_100M);
+	
+	return (AQC_LINK_UNKNOWN);
 }
 
 struct aqc_fw_ops aqc_fw_ops_2x = {
 	.init = aqc_fw_2x_init,
 	.permanent_mac = aqc_fw_2x_permanent_mac,
-	.set_link_speed = aqc_fw_2x_set_link_speed,
 	.set_state = aqc_fw_2x_set_state,
-	.update_link_status = aqc_fw_2x_update_link_status,
-	.update_stats = aqc_fw_2x_update_stats,
+	.set_link_speed = aqc_fw_2x_set_link_speed,
+	.get_link_speed = aqc_fw_2x_get_link_speed,
 };

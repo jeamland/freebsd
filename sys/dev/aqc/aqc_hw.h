@@ -31,12 +31,6 @@
 #ifndef	_AQC_HW_H_
 #define	_AQC_HW_H_
 
-enum aqc_media_type {
-	AQC_MEDIA_TYPE_UNKNOWN = 0,
-	AQC_MEDIA_TYPE_FIBRE,
-	AQC_MEDIA_TYPE_TP,
-};
-
 #define	AQC_LINK_SPEED_100M	0x00000001
 #define	AQC_LINK_SPEED_1G	0x00000002
 #define	AQC_LINK_SPEED_2G5	0x00000004
@@ -50,6 +44,8 @@ enum aqc_media_type {
     AQC_LINK_SPEED_5G	|		\
     AQC_LINK_SPEED_10G			\
 )
+
+#define	AQC_HW_SUPPORT_SPEED(s)	((softc)->caps.link_speeds & s)
 
 #define	AQC_HW_POLL(condition, usecs, iterations, err)			\
 	do {								\
@@ -78,13 +74,6 @@ struct aqc_softc;
 
 struct aqc_hw_ops {
 	int	(*probe_caps)(struct aqc_softc *);
-};
-
-struct aqc_caps {
-	enum aqc_media_type	media_type;
-	uint32_t		link_speeds;
-	uint32_t		tx_rings;
-	uint32_t		rx_rings;
 };
 
 extern struct aqc_hw_ops	aqc_hw_ops_a0;
@@ -117,5 +106,7 @@ int		aqc_hw_soft_reset(struct aqc_softc *);
 
 uint32_t	aqc_hw_read(struct aqc_softc *, uint32_t);
 void		aqc_hw_write(struct aqc_softc *, uint32_t, uint32_t);
+
+int		aqc_hw_update_stats(struct aqc_softc *);
 
 #endif	/* _AQC_HW_H_ */

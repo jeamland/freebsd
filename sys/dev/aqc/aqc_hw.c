@@ -50,7 +50,6 @@ __FBSDID("$FreeBSD$");
 #define AQC_HWREV_1	1
 #define AQC_HWREV_2	2
 
-static void	aqc_hw_mpi_set_state(struct aqc_softc *, enum aqc_fw_state);
 static int	aqc_hw_soft_reset_rbl(struct aqc_softc *);
 static int	aqc_hw_soft_reset_flb(struct aqc_softc *);
 
@@ -135,7 +134,7 @@ int
 aqc_hw_soft_reset(struct aqc_softc *softc)
 {
 	int i, err;
-	uint32_t	flash_boot_status, boot_exit_code;
+	uint32_t	flash_boot_status, boot_exit_code, value;
 	uint32_t	fw_version;
 
 	for (i = 0; i < 1000; i++) {
@@ -161,10 +160,12 @@ aqc_hw_soft_reset(struct aqc_softc *softc)
 	 */
 	fw_version = aqc_hw_read(softc, AQC_REG_FW_IMAGE_ID);
 	if (aqc_fw_version_check(AQC_FW_VERSION_1X, fw_version)) {
-		aqc_hw_mpi_set_state(softc, AQC_MPI_DEINIT);
+		value = aqc_hw_read(softc, AQC_REG_MPI_CONTROL);
+		value &= 0xffff;
+		aqc_hw_write(softc, AQC_REG_MPI_CONTROL, value);
 		
-		AQC_HW_POLL((aqc_hw_read(softc, AQC_REG_MPI_STATE) &
-		    AQC_MPI_STATE_MASK) == AQC_MPI_DEINIT, 10, 1000, err);
+		AQC_HW_POLL((aqc_hw_read(softc, AQC_REG_MPI_FW_1X_STATE) &
+		    AQC_MPI_FW_1X_STATE_MASK) == AQC_MPI_DEINIT, 10, 1000, err);
 	}
 
 	if (boot_exit_code != 0) {
@@ -188,16 +189,6 @@ aqc_hw_write(struct aqc_softc *softc, uint32_t reg, uint32_t value)
 {
 
 	bus_space_write_4(softc->mmio_tag, softc->mmio_handle, reg, value);
-}
-
-static void
-aqc_hw_mpi_set_state(struct aqc_softc *softc, enum aqc_fw_state state)
-{
-	uint32_t value;
-
-	value = aqc_hw_read(softc, AQC_REG_MPI_CONTROL);
-	value = state | (value & AQC_MPI_SPEED_MASK);
-	aqc_hw_write(softc, AQC_REG_MPI_CONTROL, value);
 }
 
 static int
@@ -378,6 +369,65 @@ aqc_hw_soft_reset_flb(struct aqc_softc *softc)
 
 	/* Older firmware requires a fixed delay after init */
 	DELAY(15 * 1000);
+
+	return (0);
+}
+
+int
+aqc_hw_update_stats(struct aqc_softc *softc)
+{
+	struct aqc_fw_mbox mbox;
+	uint32_t mtu;
+	int error;
+
+	if ((error = aqc_fw_read_mbox(softc, &mbox)) != 0)
+		return (error);
+	
+	if (AQC_HW_FEATURE(softc, AQC_HW_FEATURE_REV_A0)) {
+		mtu = 1514; /* XXX */
+		mbox.stats.ubrc *= mtu;
+		mbox.stats.ubtc *= mtu;
+		mbox.stats.dpc = 0; /* XXX: read from counter? */
+	} else {
+		mbox.stats.dpc = aqc_hw_read(softc,
+		    AQC_REG_RX_DMA_STATISTICS_COUNTER_7);
+	}
+
+#define _ACCUMULATE(V)	\
+    softc->stats.V += mbox.stats.V - softc->fw_stats.V
+
+	_ACCUMULATE(uprc);
+	_ACCUMULATE(mprc);
+	_ACCUMULATE(bprc);
+	_ACCUMULATE(erpt);
+	_ACCUMULATE(uptc);
+	_ACCUMULATE(mptc);
+	_ACCUMULATE(bptc);
+	_ACCUMULATE(erpr);
+	_ACCUMULATE(mbtc);
+	_ACCUMULATE(bbtc);
+	_ACCUMULATE(mbrc);
+	_ACCUMULATE(bbrc);
+	_ACCUMULATE(ubrc);
+	_ACCUMULATE(ubtc);
+	_ACCUMULATE(dpc);
+
+#undef _ACCUMULATE
+
+	softc->fw_stats = mbox.stats;
+
+	softc->stats.dma_pkts_rx = 
+	    (uint64_t)aqc_hw_read(softc, AQC_REG_RX_DMA_STATISTICS_COUNTER_1) +
+	    ((uint64_t)aqc_hw_read(softc, AQC_REG_RX_DMA_STATISTICS_COUNTER_2) << 32);
+	softc->stats.dma_pkts_tx = 
+	    (uint64_t)aqc_hw_read(softc, AQC_REG_TX_DMA_STATISTICS_COUNTER_1) +
+	    ((uint64_t)aqc_hw_read(softc, AQC_REG_TX_DMA_STATISTICS_COUNTER_2) << 32);
+	softc->stats.dma_bytes_rx = 
+	    (uint64_t)aqc_hw_read(softc, AQC_REG_RX_DMA_STATISTICS_COUNTER_3) +
+	    ((uint64_t)aqc_hw_read(softc, AQC_REG_RX_DMA_STATISTICS_COUNTER_4) << 32);
+	softc->stats.dma_bytes_tx = 
+	    (uint64_t)aqc_hw_read(softc, AQC_REG_TX_DMA_STATISTICS_COUNTER_3) +
+	    ((uint64_t)aqc_hw_read(softc, AQC_REG_TX_DMA_STATISTICS_COUNTER_4) << 32);
 
 	return (0);
 }

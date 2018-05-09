@@ -55,13 +55,23 @@ struct aqc_fw_rpc_tid {
 	};
 };
 
+struct aqc_fw_mbox_header {
+	uint32_t version;
+	uint32_t transaction_id;
+	uint32_t error;
+};
+
+struct aqc_fw_mbox {
+	struct aqc_fw_mbox_header header;
+	struct aqc_fw_stats stats;
+};
+
 struct aqc_fw_ops {
-	int	(*init)(struct aqc_softc *);
-	int	(*permanent_mac)(struct aqc_softc *, uint8_t *);
-	int	(*set_link_speed)(struct aqc_softc *, uint32_t);
-	int	(*set_state)(struct aqc_softc *, enum aqc_fw_state);
-	int	(*update_link_status)(struct aqc_softc *);
-	int	(*update_stats)(struct aqc_softc *);
+	int		(*init)(struct aqc_softc *);
+	int		(*permanent_mac)(struct aqc_softc *, uint8_t *);
+	int		(*set_state)(struct aqc_softc *, enum aqc_fw_state);
+	int		(*set_link_speed)(struct aqc_softc *, uint32_t);
+	uint32_t	(*get_link_speed)(struct aqc_softc *);
 };
 
 extern struct aqc_fw_ops aqc_fw_ops_1x;
@@ -71,5 +81,7 @@ bool	aqc_fw_version_check(uint32_t, uint32_t);
 
 int	aqc_fw_probe(struct aqc_softc *);
 int	aqc_fw_copyin(struct aqc_softc *, uint32_t, uint32_t, uint32_t *);
+int	aqc_fw_copy_mac_from_efuse(struct aqc_softc *, uint32_t, uint8_t *);
+int	aqc_fw_read_mbox(struct aqc_softc *, struct aqc_fw_mbox *);
 
 #endif	/* _AQC_FW_H_ */

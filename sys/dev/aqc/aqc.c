@@ -61,6 +61,7 @@ __FBSDID("$FreeBSD$");
 #include "aqc.h"
 #include "aqc_hw.h"
 #include "aqc_fw.h"
+#include "aqc_reg.h"
 
 MALLOC_DEFINE(M_AQC, "aqc", "Aquantia");
 
@@ -204,7 +205,7 @@ static driver_t aqc_if_driver = {
 
 static struct if_shared_ctx aqc_sctx_init = {
 	.isc_magic = IFLIB_MAGIC,
-	.isc_q_align = PAGE_SIZE,
+	.isc_q_align = 128,
 	.isc_tx_maxsize = AQC_TSO_SIZE,
 	.isc_tx_maxsegsize = PAGE_SIZE,
 	.isc_rx_maxsize = MJUM9BYTES,
@@ -224,8 +225,8 @@ static struct if_shared_ctx aqc_sctx_init = {
 	.isc_ntxd_min = {AQC_MIN_TXD},
 	.isc_nrxd_max = {AQC_MAX_RXD},
 	.isc_ntxd_max = {AQC_MAX_TXD},
-	.isc_nrxd_default = {AQC_DEFAULT_RXD},
-	.isc_ntxd_default = {AQC_DEFAULT_TXD},
+	.isc_nrxd_default = {PAGE_SIZE / sizeof(struct aqc_desc)},
+	.isc_ntxd_default = {PAGE_SIZE / sizeof(struct aqc_desc)},
 };
 
 if_shared_ctx_t aqc_sctx = &aqc_sctx_init;
@@ -245,6 +246,7 @@ aqc_if_attach_pre(if_ctx_t ctx)
 {
 	struct aqc_softc *softc;
 	if_softc_ctx_t scctx;
+	uint8_t mac_addr[ETHER_ADDR_LEN];
 	int rc;
 
 	softc = iflib_get_softc(ctx);
@@ -271,12 +273,6 @@ aqc_if_attach_pre(if_ctx_t ctx)
 	softc->mmio_handle = rman_get_bushandle(softc->mmio_res);
 	softc->mmio_size = rman_get_size(softc->mmio_res);
 
-	softc->caps = malloc(sizeof(struct aqc_caps), M_AQC, M_WAITOK);
-	if (softc->caps == NULL) {
-		rc = ENOMEM;
-		goto fail;
-	}
-
 	/* Look up ops and caps. */
 	if ((rc = aqc_hw_probe(softc)) != 0) {
 		device_printf(softc->dev, "hardware probe failed\n");
@@ -287,12 +283,29 @@ aqc_if_attach_pre(if_ctx_t ctx)
 		goto fail;
 	}
 	
+	softc->fw_ops->permanent_mac(softc, mac_addr);
+	iflib_set_mac(ctx, mac_addr);
+
+	scctx->isc_tx_csum_flags = 0;
+	scctx->isc_capenable = 0;
+
+	scctx->isc_tx_nsegments = 31,
+	scctx->isc_tx_tso_segments_max = 31;
+	scctx->isc_tx_tso_size_max = AQC_TSO_SIZE;
+	scctx->isc_tx_tso_segsize_max = 256 * 1024;
+	scctx->isc_vectors = 3;
+	scctx->isc_min_frame_size = AQC_MIN_FRAME_SIZE;
+	scctx->isc_txrx = &aqc_txrx;
+
+	scctx->isc_txqsizes[0] = sizeof(struct aqc_desc) * scctx->isc_ntxd[0];
+	scctx->isc_rxqsizes[0] = sizeof(struct aqc_desc) * scctx->isc_nrxd[0];
+
+	scctx->isc_ntxqsets_max = 1;
+	scctx->isc_nrxqsets_max = 1;
 	/* Fill in scctx stuff. */
 	/* XXX THIS STUFF IS NOT RIGHT YET */
 	#if 0
-	iflib_set_mac(ctx, softc->func.mac_addr);
 
-	scctx->isc_txrx = &bnxt_txrx;
 	scctx->isc_tx_csum_flags = (CSUM_IP | CSUM_TCP | CSUM_UDP |
 	    CSUM_TCP_IPV6 | CSUM_UDP_IPV6 | CSUM_TSO);
 	scctx->isc_capenable =
@@ -353,12 +366,9 @@ aqc_if_attach_pre(if_ctx_t ctx)
 	scctx->isc_msix_bar = pci_msix_table_bar(softc->dev);
 	/* XXX END OF THIS STUFF IS NOT RIGHT YET */
 
-	// return (rc);
+	return (rc);
 
 fail:
-	if (softc->caps != NULL)
-		free(softc->caps, M_AQC);
-
 	if (softc->mmio_res != NULL)
 		bus_release_resource(softc->dev, SYS_RES_MEMORY,
 		    softc->mmio_rid, softc->mmio_res);
@@ -377,8 +387,30 @@ aqc_if_attach_post(if_ctx_t ctx)
 	ifp = iflib_get_ifp(ctx);
 	rc = 0;
 
-	device_printf(softc->dev, "hi there\n");
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	aqc_hw_update_stats(softc);
+
+	if (AQC_HW_SUPPORT_SPEED(AQC_LINK_SPEED_100M))
+		ifmedia_add(softc->media, IFM_ETHER | IFM_100_TX | IFM_FDX, 0,
+		    NULL);
+
+	if (AQC_HW_SUPPORT_SPEED(AQC_LINK_SPEED_1G))
+		ifmedia_add(softc->media, IFM_ETHER | IFM_1000_T | IFM_FDX, 0,
+		    NULL);
+	
+	if (AQC_HW_SUPPORT_SPEED(AQC_LINK_SPEED_2G5))
+		ifmedia_add(softc->media, IFM_ETHER | IFM_2500_T | IFM_FDX, 0,
+		    NULL);
+
+	if (AQC_HW_SUPPORT_SPEED(AQC_LINK_SPEED_5G))
+		ifmedia_add(softc->media, IFM_ETHER | IFM_5000_T | IFM_FDX, 0,
+		    NULL);
+	if (AQC_HW_SUPPORT_SPEED(AQC_LINK_SPEED_10G))
+		ifmedia_add(softc->media, IFM_ETHER | IFM_10G_T | IFM_FDX, 0,
+		    NULL);
+
+	ifmedia_add(softc->media, IFM_ETHER | IFM_AUTO, 0, NULL);
+	ifmedia_set(softc->media, IFM_ETHER | IFM_AUTO);
+
 	return (rc);
 }
 
@@ -419,8 +451,23 @@ static int
 aqc_if_tx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs,
     uint64_t *paddrs, int ntxqs, int ntxqsets)
 {
+	struct aqc_softc *softc;
+	uint32_t value;
+	
+	softc = iflib_get_softc(ctx);
+	softc->tx_ring = (struct aqc_desc *)vaddrs[0];
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_BASE_LSW(0),
+	    paddrs[0] & 0xffffffff);
+	aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_BASE_MSW(0),
+	    (paddrs[0] & 0xffffffff00000000) >> 32);
+	value = aqc_hw_read(softc, AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(0));
+	value &= ~(AQC_TX_DMA_DESCRIPTOR_LEN_MASK
+	    << AQC_TX_DMA_DESCRIPTOR_LEN_SHIFT);
+	value |= (softc->scctx->isc_ntxd[0] & AQC_TX_DMA_DESCRIPTOR_LEN_MASK)
+	    << AQC_TX_DMA_DESCRIPTOR_LEN_SHIFT;
+	aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(0), value);
+
 	return (0);
 }
 
@@ -428,8 +475,23 @@ static int
 aqc_if_rx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs,
     uint64_t *paddrs, int nrxqs, int nrxqsets)
 {
+	struct aqc_softc *softc;
+	uint32_t value;
+	
+	softc = iflib_get_softc(ctx);
+	softc->rx_ring = (struct aqc_desc *)vaddrs[0];
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	aqc_hw_write(softc, AQC_REG_RX_DMA_DESCRIPTOR_BASE_LSW(0),
+	    paddrs[0] & 0xffffffff);
+	aqc_hw_write(softc, AQC_REG_RX_DMA_DESCRIPTOR_BASE_MSW(0),
+	    (paddrs[0] & 0xffffffff00000000) >> 32);
+	value = aqc_hw_read(softc, AQC_REG_RX_DMA_DESCRIPTOR_CONTROL(0));
+	value &= ~(AQC_RX_DMA_DESCRIPTOR_LEN_MASK
+	    << AQC_RX_DMA_DESCRIPTOR_LEN_SHIFT);
+	value |= (softc->scctx->isc_ntxd[0] & AQC_RX_DMA_DESCRIPTOR_LEN_MASK)
+	    << AQC_RX_DMA_DESCRIPTOR_LEN_SHIFT;
+	aqc_hw_write(softc, AQC_REG_RX_DMA_DESCRIPTOR_CONTROL(0), value);
+
 	return (0);
 }
 
@@ -437,7 +499,7 @@ static void
 aqc_if_queues_free(if_ctx_t ctx)
 {
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	return;
 }
 
 /* Device configuration */
@@ -473,8 +535,43 @@ aqc_if_mtu_set(if_ctx_t ctx, uint32_t mtu)
 static void
 aqc_if_media_status(if_ctx_t ctx, struct ifmediareq *ifmr)
 {
+	struct aqc_softc *softc;
+	
+	softc = iflib_get_softc(ctx);
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	ifmr->ifm_status = IFM_AVALID;
+	ifmr->ifm_active = IFM_ETHER;
+
+	/* AQC100 apparently does fibre but we'll ignore it for now. */
+	
+	switch (softc->fw_ops->get_link_speed(softc)) {
+	case AQC_LINK_100M:
+		ifmr->ifm_active |= IFM_100_TX;
+		break;
+	
+	case AQC_LINK_1G:
+		ifmr->ifm_active |= IFM_1000_T;
+		break;
+	
+	case AQC_LINK_2G5:
+		ifmr->ifm_active |= IFM_2500_T;
+		break;
+	
+	case AQC_LINK_5G:
+		ifmr->ifm_active |= IFM_5000_T;
+		break;
+	
+	case AQC_LINK_10G:
+		ifmr->ifm_active |= IFM_10G_T;
+		break;
+	
+	default:
+		ifmr->ifm_status &= ~IFM_ACTIVE;
+		return;
+	}
+
+	ifmr->ifm_status |= IFM_ACTIVE;
+	ifmr->ifm_active |= IFM_FDX;
 }
 
 static int
@@ -496,9 +593,17 @@ aqc_if_promisc_set(if_ctx_t ctx, int flags)
 static uint64_t
 aqc_if_get_counter(if_ctx_t ctx, ift_counter cnt)
 {
+	struct aqc_softc *softc = iflib_get_softc(ctx);
+	struct ifnet *ifp = iflib_get_ifp(ctx);
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
-	return (0);
+	switch (cnt) {
+	case IFCOUNTER_IERRORS:
+		return (softc->stats.erpr + softc->stats.dpc);
+	case IFCOUNTER_OERRORS:
+		return (softc->stats.erpt);
+	default:
+		return (if_get_counter_default(ifp, cnt));
+	}
 }
 
 static void
@@ -527,7 +632,7 @@ static void
 aqc_if_disable_intr(if_ctx_t ctx)
 {
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	aqc_hw_write(iflib_get_softc(ctx), AQC_REG_INTR_MASK_CLEAR, 0xffffffff);
 }
 
 static int

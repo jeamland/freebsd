@@ -57,15 +57,15 @@ struct aqc_caps b0_base_caps = {
 };
 
 static int
-aqc_b0_probe_caps(struct aqc_softc *spftc)
+aqc_b0_probe_caps(struct aqc_softc *softc)
 {
 
-	*spftc->caps = b0_base_caps;
+	softc->caps = b0_base_caps;
 
-	switch (pci_get_device(spftc->dev)) {
+	switch (pci_get_device(softc->dev)) {
 	case AQC_DEVICE_ID_D100:
-		spftc->caps->media_type = AQC_MEDIA_TYPE_FIBRE;
-		spftc->caps->link_speeds =
+		softc->caps.media_type = AQC_MEDIA_TYPE_FIBRE;
+		softc->caps.link_speeds =
 		    AQC_LINK_SPEED_ALL & ~AQC_LINK_SPEED_10G;
 		return (0);
 		break;
@@ -74,8 +74,8 @@ aqc_b0_probe_caps(struct aqc_softc *spftc)
 	case AQC_DEVICE_ID_D107:
 	case AQC_DEVICE_ID_AQC107:
 	case AQC_DEVICE_ID_AQC107S:
-		spftc->caps->media_type = AQC_MEDIA_TYPE_TP;
-		spftc->caps->link_speeds = AQC_LINK_SPEED_ALL;
+		softc->caps.media_type = AQC_MEDIA_TYPE_TP;
+		softc->caps.link_speeds = AQC_LINK_SPEED_ALL;
 		return (0);
 		break;
 	
@@ -85,8 +85,8 @@ aqc_b0_probe_caps(struct aqc_softc *spftc)
 	case AQC_DEVICE_ID_AQC111:
 	case AQC_DEVICE_ID_AQC111S:
 	case AQC_DEVICE_ID_AQC111E:
-		spftc->caps->media_type = AQC_MEDIA_TYPE_TP;
-		spftc->caps->link_speeds =
+		softc->caps.media_type = AQC_MEDIA_TYPE_TP;
+		softc->caps.link_speeds =
 		    AQC_LINK_SPEED_ALL & ~AQC_LINK_SPEED_10G;
 		return (0);
 		break;
@@ -97,8 +97,8 @@ aqc_b0_probe_caps(struct aqc_softc *spftc)
 	case AQC_DEVICE_ID_AQC112:
 	case AQC_DEVICE_ID_AQC112S:
 	case AQC_DEVICE_ID_AQC112E:
-		spftc->caps->media_type = AQC_MEDIA_TYPE_TP;
-		spftc->caps->link_speeds = AQC_LINK_SPEED_ALL & 
+		softc->caps.media_type = AQC_MEDIA_TYPE_TP;
+		softc->caps.link_speeds = AQC_LINK_SPEED_ALL & 
 		    ~(AQC_LINK_SPEED_10G | AQC_LINK_SPEED_5G);
 		return (0);
 		break;

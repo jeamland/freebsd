@@ -32,6 +32,7 @@ __FBSDID("$FreeBSD$");
 #include <sys/param.h>
 #include <sys/kernel.h>
 #include <sys/socket.h>
+#include <sys/endian.h>
 
 #include <net/if.h>
 #include <net/if_media.h>
@@ -120,4 +121,32 @@ aqc_fw_copyin(struct aqc_softc *softc, uint32_t addr, uint32_t len,
 
 	aqc_hw_write(softc, AQC_REG_FW_RAM_SEMAPHORE, 1);
 	return (0);
+}
+
+int
+aqc_fw_copy_mac_from_efuse(struct aqc_softc *softc, uint32_t efuse_addr,
+    uint8_t *mac)
+{
+	int error;
+	uint32_t mac_buffer[2];
+
+	/* XXX magic number */
+	error = aqc_fw_copyin(softc, efuse_addr + (40 * 4), 2, mac_buffer);
+	if (error != 0)
+		return (error);
+
+	mac_buffer[0] = bswap32(mac_buffer[0]);
+	mac_buffer[1] = bswap32(mac_buffer[1]);
+
+	bcopy(mac_buffer, mac, ETHER_ADDR_LEN);
+
+	return (0);
+}
+
+int
+aqc_fw_read_mbox(struct aqc_softc *softc, struct aqc_fw_mbox *mbox)
+{
+
+	return (aqc_fw_copyin(softc, softc->mbox_addr,
+	    sizeof(struct aqc_fw_mbox) / sizeof(uint32_t), (uint32_t *)mbox));
 }
