@@ -68,7 +68,7 @@ struct aqc_fw_mbox {
 
 struct aqc_fw_ops {
 	int		(*init)(struct aqc_softc *);
-	int		(*permanent_mac)(struct aqc_softc *, uint8_t *);
+	int		(*get_permanent_mac)(struct aqc_softc *);
 	int		(*set_state)(struct aqc_softc *, enum aqc_fw_state);
 	int		(*set_link_speed)(struct aqc_softc *, uint32_t);
 	uint32_t	(*get_link_speed)(struct aqc_softc *);
@@ -79,9 +79,39 @@ extern struct aqc_fw_ops aqc_fw_ops_2x;
 
 bool	aqc_fw_version_check(uint32_t, uint32_t);
 
-int	aqc_fw_probe(struct aqc_softc *);
-int	aqc_fw_copyin(struct aqc_softc *, uint32_t, uint32_t, uint32_t *);
-int	aqc_fw_copy_mac_from_efuse(struct aqc_softc *, uint32_t, uint8_t *);
-int	aqc_fw_read_mbox(struct aqc_softc *, struct aqc_fw_mbox *);
+int		aqc_fw_probe(struct aqc_softc *);
+int		aqc_fw_copyin(struct aqc_softc *, uint32_t, uint32_t,
+		    uint32_t *);
+int		aqc_fw_copy_mac_from_efuse(struct aqc_softc *, uint32_t,
+		    uint8_t *);
+int		aqc_fw_read_mbox(struct aqc_softc *, struct aqc_fw_mbox *);
+
+inline int
+aqc_fw_get_permanent_mac(struct aqc_softc *softc)
+{
+
+	return (softc->fw_ops->get_permanent_mac(softc));
+}
+
+inline int
+aqc_fw_set_state(struct aqc_softc *softc, enum aqc_fw_state state)
+{
+
+	return (softc->fw_ops->set_state(softc, state));
+}
+
+inline int
+aqc_fw_set_link_speed(struct aqc_softc *softc, uint32_t speed)
+{
+
+	return (softc->fw_ops->set_link_speed(softc, speed));
+}
+
+inline uint32_t
+aqc_fw_get_link_speed(struct aqc_softc *softc)
+{
+
+	return (softc->fw_ops->get_link_speed(softc));
+}
 
 #endif	/* _AQC_FW_H_ */

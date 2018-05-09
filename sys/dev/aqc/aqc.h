@@ -87,6 +87,14 @@ enum aqc_media_type {
 #define	AQC_LINK_5G		0x00000008
 #define	AQC_LINK_10G		0x00000010
 
+#define	AQC_LINK_ALL	(	\
+	AQC_LINK_100M	|	\
+	AQC_LINK_1G	|	\
+	AQC_LINK_2G5	|	\
+	AQC_LINK_5G	|	\
+	AQC_LINK_10G		\
+)
+
 struct aqc_hw_ops;
 struct aqc_fw_ops;
 
@@ -151,6 +159,7 @@ struct aqc_softc {
 	struct aqc_caps		caps;
 	uint32_t		chip_features;
 	uint32_t		mbox_addr;
+	uint8_t			mac_addr[ETHER_ADDR_LEN];
 
 	int			mmio_rid;
 	struct resource *	mmio_res;

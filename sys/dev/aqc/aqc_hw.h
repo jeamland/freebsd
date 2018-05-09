@@ -31,20 +31,6 @@
 #ifndef	_AQC_HW_H_
 #define	_AQC_HW_H_
 
-#define	AQC_LINK_SPEED_100M	0x00000001
-#define	AQC_LINK_SPEED_1G	0x00000002
-#define	AQC_LINK_SPEED_2G5	0x00000004
-#define	AQC_LINK_SPEED_5G	0x00000008
-#define	AQC_LINK_SPEED_10G	0x00000010
-
-#define	AQC_LINK_SPEED_ALL	(	\
-    AQC_LINK_SPEED_100M	|		\
-    AQC_LINK_SPEED_1G	|		\
-    AQC_LINK_SPEED_2G5	|		\
-    AQC_LINK_SPEED_5G	|		\
-    AQC_LINK_SPEED_10G			\
-)
-
 #define	AQC_HW_SUPPORT_SPEED(s)	((softc)->caps.link_speeds & s)
 
 #define	AQC_HW_POLL(condition, usecs, iterations, err)			\
@@ -74,39 +60,19 @@ struct aqc_softc;
 
 struct aqc_hw_ops {
 	int	(*probe_caps)(struct aqc_softc *);
+	int	(*hw_init)(struct aqc_softc *);
 };
 
 extern struct aqc_hw_ops	aqc_hw_ops_a0;
 extern struct aqc_hw_ops	aqc_hw_ops_b0b1;
 
-extern struct aqc_caps		aqc_caps_a0_aqc100;
-extern struct aqc_caps		aqc_caps_a0_aqc107;
-extern struct aqc_caps		aqc_caps_a0_aqc108;
-extern struct aqc_caps		aqc_caps_a0_aqc109;
-
-extern struct aqc_caps		aqc_caps_b0b1_aqc100;
-extern struct aqc_caps		aqc_caps_b0b1_aqc107;
-extern struct aqc_caps		aqc_caps_b0b1_aqc108;
-extern struct aqc_caps		aqc_caps_b0b1_aqc109;
-extern struct aqc_caps		aqc_caps_b0b1_aqc111;
-extern struct aqc_caps		aqc_caps_b0b1_aqc112;
-
-extern struct aqc_caps		aqc_caps_b0b1_aqc100s;
-extern struct aqc_caps		aqc_caps_b0b1_aqc107s;
-extern struct aqc_caps		aqc_caps_b0b1_aqc108s;
-extern struct aqc_caps		aqc_caps_b0b1_aqc109s;
-extern struct aqc_caps		aqc_caps_b0b1_aqc111s;
-extern struct aqc_caps		aqc_caps_b0b1_aqc112s;
-
-extern struct aqc_caps		aqc_caps_b0b1_aqc111e;
-extern struct aqc_caps		aqc_caps_b0b1_aqc112e;
-
 int		aqc_hw_probe(struct aqc_softc *);
+int		aqc_hw_set_mac(struct aqc_softc *);
 int		aqc_hw_soft_reset(struct aqc_softc *);
+int		aqc_hw_update_stats(struct aqc_softc *);
 
 uint32_t	aqc_hw_read(struct aqc_softc *, uint32_t);
 void		aqc_hw_write(struct aqc_softc *, uint32_t, uint32_t);
 
-int		aqc_hw_update_stats(struct aqc_softc *);
 
 #endif	/* _AQC_HW_H_ */

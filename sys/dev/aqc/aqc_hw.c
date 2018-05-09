@@ -50,6 +50,8 @@ __FBSDID("$FreeBSD$");
 #define AQC_HWREV_1	1
 #define AQC_HWREV_2	2
 
+#define AQC_UNICAST_FILTER_MAC	0	/* RX unicast filter for primary MAC */
+
 static int	aqc_hw_soft_reset_rbl(struct aqc_softc *);
 static int	aqc_hw_soft_reset_flb(struct aqc_softc *);
 
@@ -131,6 +133,36 @@ aqc_hw_probe(struct aqc_softc *softc)
 }
 
 int
+aqc_hw_set_mac(struct aqc_softc *softc)
+{
+	uint32_t lsw, msw, value;
+
+	msw = (softc->mac_addr[0] << 8) | softc->mac_addr[1];
+	lsw = (softc->mac_addr[2] << 24) | (softc->mac_addr[3] << 16) |
+	    (softc->mac_addr[4] << 8) | softc->mac_addr[5];
+
+	value = aqc_hw_read(softc,
+	    AQC_REG_RX_UNICAST_FILTER_2(AQC_UNICAST_FILTER_MAC));
+	value &= ~(AQC_RX_UNICAST_FILTER_L2_EN);
+	aqc_hw_write(softc,
+	    AQC_REG_RX_UNICAST_FILTER_2(AQC_UNICAST_FILTER_MAC), value);
+
+	aqc_hw_write(softc,
+	    AQC_REG_RX_UNICAST_FILTER_1(AQC_UNICAST_FILTER_MAC), lsw);
+
+	value &= 0xffff0000;
+	value |= msw;
+	aqc_hw_write(softc,
+	    AQC_REG_RX_UNICAST_FILTER_2(AQC_UNICAST_FILTER_MAC), value);
+
+	value |= AQC_RX_UNICAST_FILTER_L2_EN;
+	aqc_hw_write(softc,
+	    AQC_REG_RX_UNICAST_FILTER_2(AQC_UNICAST_FILTER_MAC), value);
+
+	return (0);
+}
+
+int
 aqc_hw_soft_reset(struct aqc_softc *softc)
 {
 	int i, err;
@@ -175,6 +207,72 @@ aqc_hw_soft_reset(struct aqc_softc *softc)
 
 	/* We're using the flash boot loader. */
 	return (aqc_hw_soft_reset_flb(softc));
+}
+
+int
+aqc_hw_update_stats(struct aqc_softc *softc)
+{
+	struct aqc_fw_mbox mbox;
+	uint32_t mtu;
+	int error;
+
+	if ((error = aqc_fw_read_mbox(softc, &mbox)) != 0)
+		return (error);
+
+	if (AQC_HW_FEATURE(softc, AQC_HW_FEATURE_REV_A0)) {
+		mtu = 1514; /* XXX */
+		mbox.stats.ubrc *= mtu;
+		mbox.stats.ubtc *= mtu;
+		mbox.stats.dpc = 0; /* XXX: read from counter? */
+	} else {
+		mbox.stats.dpc = aqc_hw_read(softc,
+		    AQC_REG_RX_DMA_STATS_COUNTER_7);
+	}
+
+#define _ACCUMULATE(V)	\
+    softc->stats.V += mbox.stats.V - softc->fw_stats.V
+
+	_ACCUMULATE(uprc);
+	_ACCUMULATE(mprc);
+	_ACCUMULATE(bprc);
+	_ACCUMULATE(erpt);
+	_ACCUMULATE(uptc);
+	_ACCUMULATE(mptc);
+	_ACCUMULATE(bptc);
+	_ACCUMULATE(erpr);
+	_ACCUMULATE(mbtc);
+	_ACCUMULATE(bbtc);
+	_ACCUMULATE(mbrc);
+	_ACCUMULATE(bbrc);
+	_ACCUMULATE(ubrc);
+	_ACCUMULATE(ubtc);
+	_ACCUMULATE(dpc);
+
+#undef _ACCUMULATE
+
+	softc->fw_stats = mbox.stats;
+
+	softc->stats.dma_pkts_rx =
+	    (uint64_t)aqc_hw_read(softc, AQC_REG_RX_DMA_STATS_COUNTER_2) << 32;
+	softc->stats.dma_pkts_rx +=
+	    aqc_hw_read(softc, AQC_REG_RX_DMA_STATS_COUNTER_1);
+
+	softc->stats.dma_pkts_tx =
+	    (uint64_t)aqc_hw_read(softc, AQC_REG_TX_DMA_STATS_COUNTER_2) << 32;
+	softc->stats.dma_pkts_tx +=
+	    aqc_hw_read(softc, AQC_REG_TX_DMA_STATS_COUNTER_1);
+
+	softc->stats.dma_bytes_rx =
+	    (uint64_t)aqc_hw_read(softc, AQC_REG_RX_DMA_STATS_COUNTER_4) << 32;
+	softc->stats.dma_bytes_rx +=
+	    aqc_hw_read(softc, AQC_REG_RX_DMA_STATS_COUNTER_3);
+
+	softc->stats.dma_bytes_tx =
+	    (uint64_t)aqc_hw_read(softc, AQC_REG_TX_DMA_STATS_COUNTER_4) << 32;
+	softc->stats.dma_bytes_tx +=
+	    aqc_hw_read(softc, AQC_REG_TX_DMA_STATS_COUNTER_3);
+
+	return (0);
 }
 
 uint32_t
@@ -369,65 +467,6 @@ aqc_hw_soft_reset_flb(struct aqc_softc *softc)
 
 	/* Older firmware requires a fixed delay after init */
 	DELAY(15 * 1000);
-
-	return (0);
-}
-
-int
-aqc_hw_update_stats(struct aqc_softc *softc)
-{
-	struct aqc_fw_mbox mbox;
-	uint32_t mtu;
-	int error;
-
-	if ((error = aqc_fw_read_mbox(softc, &mbox)) != 0)
-		return (error);
-	
-	if (AQC_HW_FEATURE(softc, AQC_HW_FEATURE_REV_A0)) {
-		mtu = 1514; /* XXX */
-		mbox.stats.ubrc *= mtu;
-		mbox.stats.ubtc *= mtu;
-		mbox.stats.dpc = 0; /* XXX: read from counter? */
-	} else {
-		mbox.stats.dpc = aqc_hw_read(softc,
-		    AQC_REG_RX_DMA_STATISTICS_COUNTER_7);
-	}
-
-#define _ACCUMULATE(V)	\
-    softc->stats.V += mbox.stats.V - softc->fw_stats.V
-
-	_ACCUMULATE(uprc);
-	_ACCUMULATE(mprc);
-	_ACCUMULATE(bprc);
-	_ACCUMULATE(erpt);
-	_ACCUMULATE(uptc);
-	_ACCUMULATE(mptc);
-	_ACCUMULATE(bptc);
-	_ACCUMULATE(erpr);
-	_ACCUMULATE(mbtc);
-	_ACCUMULATE(bbtc);
-	_ACCUMULATE(mbrc);
-	_ACCUMULATE(bbrc);
-	_ACCUMULATE(ubrc);
-	_ACCUMULATE(ubtc);
-	_ACCUMULATE(dpc);
-
-#undef _ACCUMULATE
-
-	softc->fw_stats = mbox.stats;
-
-	softc->stats.dma_pkts_rx = 
-	    (uint64_t)aqc_hw_read(softc, AQC_REG_RX_DMA_STATISTICS_COUNTER_1) +
-	    ((uint64_t)aqc_hw_read(softc, AQC_REG_RX_DMA_STATISTICS_COUNTER_2) << 32);
-	softc->stats.dma_pkts_tx = 
-	    (uint64_t)aqc_hw_read(softc, AQC_REG_TX_DMA_STATISTICS_COUNTER_1) +
-	    ((uint64_t)aqc_hw_read(softc, AQC_REG_TX_DMA_STATISTICS_COUNTER_2) << 32);
-	softc->stats.dma_bytes_rx = 
-	    (uint64_t)aqc_hw_read(softc, AQC_REG_RX_DMA_STATISTICS_COUNTER_3) +
-	    ((uint64_t)aqc_hw_read(softc, AQC_REG_RX_DMA_STATISTICS_COUNTER_4) << 32);
-	softc->stats.dma_bytes_tx = 
-	    (uint64_t)aqc_hw_read(softc, AQC_REG_TX_DMA_STATISTICS_COUNTER_3) +
-	    ((uint64_t)aqc_hw_read(softc, AQC_REG_TX_DMA_STATISTICS_COUNTER_4) << 32);
 
 	return (0);
 }

@@ -246,7 +246,6 @@ aqc_if_attach_pre(if_ctx_t ctx)
 {
 	struct aqc_softc *softc;
 	if_softc_ctx_t scctx;
-	uint8_t mac_addr[ETHER_ADDR_LEN];
 	int rc;
 
 	softc = iflib_get_softc(ctx);
@@ -283,8 +282,8 @@ aqc_if_attach_pre(if_ctx_t ctx)
 		goto fail;
 	}
 	
-	softc->fw_ops->permanent_mac(softc, mac_addr);
-	iflib_set_mac(ctx, mac_addr);
+	aqc_fw_get_permanent_mac(softc);
+	iflib_set_mac(ctx, softc->mac_addr);
 
 	scctx->isc_tx_csum_flags = 0;
 	scctx->isc_capenable = 0;
@@ -389,27 +388,50 @@ aqc_if_attach_post(if_ctx_t ctx)
 
 	aqc_hw_update_stats(softc);
 
-	if (AQC_HW_SUPPORT_SPEED(AQC_LINK_SPEED_100M))
+	if (AQC_HW_SUPPORT_SPEED(AQC_LINK_100M))
 		ifmedia_add(softc->media, IFM_ETHER | IFM_100_TX | IFM_FDX, 0,
 		    NULL);
 
-	if (AQC_HW_SUPPORT_SPEED(AQC_LINK_SPEED_1G))
+	if (AQC_HW_SUPPORT_SPEED(AQC_LINK_1G))
 		ifmedia_add(softc->media, IFM_ETHER | IFM_1000_T | IFM_FDX, 0,
 		    NULL);
 	
-	if (AQC_HW_SUPPORT_SPEED(AQC_LINK_SPEED_2G5))
+	if (AQC_HW_SUPPORT_SPEED(AQC_LINK_2G5))
 		ifmedia_add(softc->media, IFM_ETHER | IFM_2500_T | IFM_FDX, 0,
 		    NULL);
 
-	if (AQC_HW_SUPPORT_SPEED(AQC_LINK_SPEED_5G))
+	if (AQC_HW_SUPPORT_SPEED(AQC_LINK_5G))
 		ifmedia_add(softc->media, IFM_ETHER | IFM_5000_T | IFM_FDX, 0,
 		    NULL);
-	if (AQC_HW_SUPPORT_SPEED(AQC_LINK_SPEED_10G))
+	if (AQC_HW_SUPPORT_SPEED(AQC_LINK_10G))
 		ifmedia_add(softc->media, IFM_ETHER | IFM_10G_T | IFM_FDX, 0,
 		    NULL);
 
 	ifmedia_add(softc->media, IFM_ETHER | IFM_AUTO, 0, NULL);
 	ifmedia_set(softc->media, IFM_ETHER | IFM_AUTO);
+
+	/* XXX init TX path */
+	/* XXX init RX path */
+
+	aqc_hw_set_mac(softc);
+
+	aqc_fw_set_link_speed(softc, softc->caps.link_speeds);
+	aqc_fw_set_state(softc, AQC_MPI_INIT);
+
+	/* XXX TX DMA debug toggle. Undocumented register 0x00008920 */
+
+	/* XXX qos */
+	/* XXX rss */
+	/* XXX rss hash */
+
+	aqc_hw_update_stats(softc);
+
+	/* XXX interrupt global control */
+	/* XXX interrupt auto mask */
+
+	/* XXX interrupt irq map */
+
+	/* XXX hardware offload */
 
 	return (rc);
 }
@@ -536,39 +558,51 @@ static void
 aqc_if_media_status(if_ctx_t ctx, struct ifmediareq *ifmr)
 {
 	struct aqc_softc *softc;
+	struct ifnet *ifp;
 	
 	softc = iflib_get_softc(ctx);
+	ifp = iflib_get_ifp(ctx);
 
 	ifmr->ifm_status = IFM_AVALID;
 	ifmr->ifm_active = IFM_ETHER;
 
 	/* AQC100 apparently does fibre but we'll ignore it for now. */
 	
-	switch (softc->fw_ops->get_link_speed(softc)) {
+	switch (aqc_fw_get_link_speed(softc)) {
 	case AQC_LINK_100M:
 		ifmr->ifm_active |= IFM_100_TX;
+		if_setbaudrate(ifp, IF_Mbps(100));
 		break;
 	
 	case AQC_LINK_1G:
 		ifmr->ifm_active |= IFM_1000_T;
+		if_setbaudrate(ifp, IF_Gbps(1));
 		break;
 	
 	case AQC_LINK_2G5:
 		ifmr->ifm_active |= IFM_2500_T;
+		if_setbaudrate(ifp, IF_Mbps(2500));
 		break;
 	
 	case AQC_LINK_5G:
 		ifmr->ifm_active |= IFM_5000_T;
+		if_setbaudrate(ifp, IF_Gbps(5));
 		break;
 	
 	case AQC_LINK_10G:
 		ifmr->ifm_active |= IFM_10G_T;
+		if_setbaudrate(ifp, IF_Gbps(10));
 		break;
 	
 	default:
 		ifmr->ifm_status &= ~IFM_ACTIVE;
+		iflib_link_state_change(ctx, LINK_STATE_DOWN,
+		    ifp->if_baudrate);
 		return;
 	}
+
+	device_printf(softc->dev, "got here\n");
+	iflib_link_state_change(ctx, LINK_STATE_UP, ifp->if_baudrate);
 
 	ifmr->ifm_status |= IFM_ACTIVE;
 	ifmr->ifm_active |= IFM_FDX;
@@ -610,7 +644,7 @@ static void
 aqc_if_update_admin_status(if_ctx_t ctx)
 {
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	aqc_hw_update_stats(iflib_get_softc(ctx));
 }
 
 static void
@@ -632,7 +666,8 @@ static void
 aqc_if_disable_intr(if_ctx_t ctx)
 {
 
-	aqc_hw_write(iflib_get_softc(ctx), AQC_REG_INTR_MASK_CLEAR, 0xffffffff);
+	aqc_hw_write(iflib_get_softc(ctx), AQC_REG_INTR_MASK_CLEAR,
+	    0xffffffff);
 }
 
 static int
@@ -679,8 +714,7 @@ static int
 aqc_if_priv_ioctl(if_ctx_t ctx, u_long command, caddr_t data)
 {
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
-	return (0);
+	return (ENOTSUP);
 }
 
 static void

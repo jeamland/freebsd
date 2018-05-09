@@ -72,7 +72,7 @@ aqc_fw_2x_init(struct aqc_softc *softc)
 }
 
 static int
-aqc_fw_2x_permanent_mac(struct aqc_softc *softc, uint8_t *mac)
+aqc_fw_2x_get_permanent_mac(struct aqc_softc *softc)
 {
 	uint32_t efuse_addr;
 
@@ -82,7 +82,8 @@ aqc_fw_2x_permanent_mac(struct aqc_softc *softc, uint8_t *mac)
 		return (EIO);
 	}
 
-	return (aqc_fw_copy_mac_from_efuse(softc, efuse_addr, mac));
+	return (aqc_fw_copy_mac_from_efuse(softc, efuse_addr,
+	    softc->mac_addr));
 }
 
 static int
@@ -143,7 +144,7 @@ aqc_fw_2x_get_link_speed(struct aqc_softc *softc)
 
 struct aqc_fw_ops aqc_fw_ops_2x = {
 	.init = aqc_fw_2x_init,
-	.permanent_mac = aqc_fw_2x_permanent_mac,
+	.get_permanent_mac = aqc_fw_2x_get_permanent_mac,
 	.set_state = aqc_fw_2x_set_state,
 	.set_link_speed = aqc_fw_2x_set_link_speed,
 	.get_link_speed = aqc_fw_2x_get_link_speed,
