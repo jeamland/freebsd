@@ -31,7 +31,7 @@
 #ifndef	_AQC_HW_H_
 #define	_AQC_HW_H_
 
-#define	AQC_HW_SUPPORT_SPEED(s)	((softc)->caps.link_speeds & s)
+#define	AQC_HW_SUPPORT_SPEED(s)	((softc)->link_speeds & s)
 
 #define	AQC_HW_POLL(condition, usecs, iterations, err)			\
 	do {								\
@@ -51,20 +51,14 @@
 #define	AQC_HW_FEATURE_TPO2	0x00000002
 #define	AQC_HW_FEATURE_RPF2	0x00000004
 #define	AQC_HW_FEATURE_MPI_AQ	0x00000008
-#define	AQC_HW_FEATURE_REV_A0	0x01000000
 #define	AQC_HW_FEATURE_REV_B0	0x02000000
 #define	AQC_HW_FEATURE_REV_B1	0x04000000
 
+#define	AQC_TX_RING_COUNT	4
+#define	AQC_RX_RING_COUNT	4
+
 struct aqc_ring;
 struct aqc_softc;
-
-struct aqc_hw_ops {
-	int	(*probe_caps)(struct aqc_softc *);
-	int	(*hw_init)(struct aqc_softc *);
-};
-
-extern struct aqc_hw_ops	aqc_hw_ops_a0;
-extern struct aqc_hw_ops	aqc_hw_ops_b0b1;
 
 int		aqc_hw_probe(struct aqc_softc *);
 int		aqc_hw_set_mac(struct aqc_softc *);

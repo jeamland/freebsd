@@ -95,15 +95,7 @@ enum aqc_media_type {
 	AQC_LINK_10G		\
 )
 
-struct aqc_hw_ops;
 struct aqc_fw_ops;
-
-struct aqc_caps {
-	enum aqc_media_type	media_type;
-	uint32_t		link_speeds;
-	uint32_t		tx_rings;
-	uint32_t		rx_rings;
-};
 
 struct aqc_fw_stats {
 	uint32_t uprc;		/* unicast packets received */
@@ -161,7 +153,10 @@ struct aqc_softc {
 	struct aqc_hw_ops *	hw_ops;
 	struct aqc_fw_ops *	fw_ops;
 
-	struct aqc_caps		caps;
+	enum aqc_media_type	media_type;
+	uint32_t		link_speeds;
+	uint32_t		tx_rings;
+	uint32_t		rx_rings;
 	uint32_t		chip_features;
 	uint32_t		mbox_addr;
 	uint8_t			mac_addr[ETHER_ADDR_LEN];

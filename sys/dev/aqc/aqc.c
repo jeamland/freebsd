@@ -430,7 +430,7 @@ aqc_if_attach_post(if_ctx_t ctx)
 
 	aqc_hw_set_mac(softc);
 
-	aqc_fw_set_link_speed(softc, softc->caps.link_speeds);
+	aqc_fw_set_link_speed(softc, softc->link_speeds);
 	aqc_fw_set_state(softc, AQC_MPI_INIT);
 
 	/* XXX TX DMA debug toggle. Undocumented register 0x00008920 */
