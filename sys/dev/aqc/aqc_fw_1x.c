@@ -149,7 +149,6 @@ aqc_fw_1x_get_link_speed(struct aqc_softc *softc)
 	uint32_t speed;
 
 	speed = aqc_hw_read(softc, AQC_REG_MPI_FW_1X_STATE);
-	device_printf(softc->dev, "%08x\n", speed);
 	speed = speed & AQC_FW_1X_RATE_MASK;
 
 	if (speed & AQC_FW_1X_RATE_10G)

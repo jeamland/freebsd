@@ -281,6 +281,8 @@ aqc_if_attach_pre(if_ctx_t ctx)
 		device_printf(softc->dev, "firmware probe failed\n");
 		goto fail;
 	}
+
+	softc->admin_ticks = 0;
 	
 	aqc_fw_get_permanent_mac(softc);
 	iflib_set_mac(ctx, softc->mac_addr);
@@ -380,6 +382,7 @@ aqc_if_attach_post(if_ctx_t ctx)
 {
 	struct aqc_softc *softc;
 	if_t ifp;
+	uint32_t value;
 	int rc;
 
 	softc = iflib_get_softc(ctx);
@@ -410,7 +413,19 @@ aqc_if_attach_post(if_ctx_t ctx)
 	ifmedia_add(softc->media, IFM_ETHER | IFM_AUTO, 0, NULL);
 	ifmedia_set(softc->media, IFM_ETHER | IFM_AUTO);
 
-	/* XXX init TX path */
+	/* XXX TSO flags */
+	/* XXX TX writeback interrupt enable */
+	/* XXX TPO2 something? undocumented register 0x00007040 */
+
+	value = aqc_hw_read(softc, AQC_REG_TX_DCA_CONTROL_33);
+	value &= ~(AQC_TX_DCA_EN + AQC_TX_DCA_MODE_MASK);
+	value |= AQC_TX_DCA_MODE_LEGACY;
+	aqc_hw_write(softc, AQC_REG_TX_DCA_CONTROL_33, value);
+
+	value = aqc_hw_read(softc, AQC_REG_TX_PACKET_BUFFER_CONTROL_1);
+	value |= AQC_TX_PACKET_BUFFER_PAD_INS_EN;
+	aqc_hw_write(softc, AQC_REG_TX_PACKET_BUFFER_CONTROL_1, value);
+
 	/* XXX init RX path */
 
 	aqc_hw_set_mac(softc);
@@ -439,8 +454,14 @@ aqc_if_attach_post(if_ctx_t ctx)
 static int
 aqc_if_detach(if_ctx_t ctx)
 {
+	struct aqc_softc *softc;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	softc = iflib_get_softc(ctx);
+
+	if (softc->mmio_res != NULL)
+		bus_release_resource(softc->dev, SYS_RES_MEMORY,
+		    softc->mmio_rid, softc->mmio_res);
+
 	return (0);
 }
 
@@ -528,8 +549,15 @@ aqc_if_queues_free(if_ctx_t ctx)
 static void
 aqc_if_init(if_ctx_t ctx)
 {
+	struct aqc_softc *softc;
+	struct ifmediareq ifmr;
+	uint32_t value;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	softc = iflib_get_softc(ctx);
+	aqc_if_media_status(ctx, &ifmr);
+	value = aqc_hw_read(softc, AQC_REG_TX_PACKET_BUFFER_CONTROL_1);
+	value |= AQC_TX_PACKET_BUFFER_TX_BUF_EN;
+	aqc_hw_write(softc, AQC_REG_TX_PACKET_BUFFER_CONTROL_1, value);
 }
 
 static void
@@ -601,7 +629,6 @@ aqc_if_media_status(if_ctx_t ctx, struct ifmediareq *ifmr)
 		return;
 	}
 
-	device_printf(softc->dev, "got here\n");
 	iflib_link_state_change(ctx, LINK_STATE_UP, ifp->if_baudrate);
 
 	ifmr->ifm_status |= IFM_ACTIVE;
@@ -650,8 +677,20 @@ aqc_if_update_admin_status(if_ctx_t ctx)
 static void
 aqc_if_timer(if_ctx_t ctx, uint16_t qid)
 {
+	struct aqc_softc *softc;
+	uint64_t ticks_now;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	softc = iflib_get_softc(ctx);
+	ticks_now = ticks;
+
+	/* Schedule aqc_if_update_admin_status() once per sec */
+	if (ticks_now - softc->admin_ticks >= hz) {
+		softc->admin_ticks = ticks_now;
+		iflib_admin_intr_deferred(ctx);
+	}
+
+	return;
+
 }
 
 /* Interrupt enable / disable */
@@ -689,8 +728,14 @@ aqc_if_tx_queue_intr_enable(if_ctx_t ctx, uint16_t txqid)
 static int
 aqc_if_msix_intr_assign(if_ctx_t ctx, int msix)
 {
+	struct aqc_softc *softc;
+	int i;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	softc = iflib_get_softc(ctx);
+	for (i=0; i < softc->scctx->isc_ntxqsets; i++)
+		iflib_softirq_alloc_generic(ctx, NULL, IFLIB_INTR_TX, NULL, i,
+		    "tx_cp");
+
 	return (0);
 }
 

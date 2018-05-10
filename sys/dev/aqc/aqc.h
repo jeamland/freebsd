@@ -146,6 +146,11 @@ struct aqc_stats {
 	uint64_t dma_bytes_tx;		/* DMA bytes transmitted */
 };
 
+struct aqc_desc {
+	uint64_t	field1;
+	uint64_t	field2;
+};
+
 struct aqc_softc {
 	device_t		dev;
 	if_ctx_t		ctx;
@@ -160,6 +165,7 @@ struct aqc_softc {
 	uint32_t		chip_features;
 	uint32_t		mbox_addr;
 	uint8_t			mac_addr[ETHER_ADDR_LEN];
+	uint64_t		admin_ticks;
 
 	int			mmio_rid;
 	struct resource *	mmio_res;
@@ -173,105 +179,6 @@ struct aqc_softc {
 	struct aqc_stats	stats;
 	struct aqc_fw_stats	fw_stats;
 };
-
-struct aqc_desc {
-	uint64_t	field1;
-	uint64_t	field2;
-};
-
-#define	AQC_DESC_TX_PAY_LEN_MASK	0x3ffff
-#define	AQC_DESC_TX_PAY_LEN_SHIFT	46
-#define	AQC_DESC_TX_CT_EN_MASK		0x1
-#define	AQC_DESC_TX_CT_EN_SHIFT		45
-#define	AQC_DESC_TX_CT_IDX_MASK		0x1
-#define	AQC_DESC_TX_CT_IDX_SHIFT	46
-#define	AQC_DESC_TX_CMD_SHIFT		22
-#define	AQC_DESC_TX_EOP_MASK		0x1
-#define	AQC_DESC_TX_EOP_SHIFT		21
-#define	AQC_DESC_TX_DD_MASK		0x1
-#define	AQC_DESC_TX_DD_SHIFT		20
-#define	AQC_DESC_TX_BUF_LEN_MASK	0xffff
-#define	AQC_DESC_TX_BUF_LEN_SHIFT	4
-#define	AQC_DESC_TX_DES_TYP_MASK	0x3
-#define	AQC_DESC_TX_DES_TYP_SHIFT	0
-
-#define	AQC_DESC_TX_CTX_MSS_LEN_MASK	0x3f
-#define	AQC_DESC_TX_CTX_MSS_LEN_SHIFT	48
-#define	AQC_DESC_TX_CTX_L4_LEN_MASK	0xff
-#define	AQC_DESC_TX_CTX_L4_LEN_SHIFT	40
-#define	AQC_DESC_TX_CTX_L3_LEN_MASK	0x1ff
-#define	AQC_DESC_TX_CTX_L3_LEN_SHIFT	31
-#define	AQC_DESC_TX_CTX_L2_LEN_MASK	0x7f
-#define	AQC_DESC_TX_CTX_L2_LEN_SHIFT	24
-#define	AQC_DESC_TX_CTX_CT_CMD_MASK	0xf
-#define	AQC_DESC_TX_CTX_CT_CMD_SHIFT	20
-#define	AQC_DESC_TX_CTX_VLAN_TAG_MASK	0xffff
-#define	AQC_DESC_TX_CTX_VLAN_TAG_SHIFT	4
-#define	AQC_DESC_TX_CTX_CT_IDX_MASK	0x1
-#define	AQC_DESC_TX_CTX_CT_IDX_SHIFT	3
-#define	AQC_DESC_TX_CTX_DES_TYP_MASK	0x3
-#define	AQC_DESC_TX_CTX_DES_TYP_SHIFT	0
-
-#define	AQC_TX_CMD_VLAN_INSERT		0x01
-#define	AQC_TX_CMD_MAC_FCS_INSERT	0x02
-#define	AQC_TX_CMD_IPV4_CSUM		0x04
-#define	AQC_TX_CMD_TCP_UDP_CSUM		0x08
-#define	AQC_TX_CMD_LSO			0x10
-#define	AQC_TX_CMD_DESC_WRITEBACK	0x20
-
-#define	AQC_TX_DES_TYP_PACKET		0x1
-#define	AQC_TX_DES_TYP_CONTEXT		0x2
-
-#define	AQC_TX_CT_CMD_L2_TYPE_802_3	0x0
-#define	AQC_TX_CT_CMD_L2_TYPE_SNAP	0x1
-#define	AQC_TX_CT_CMD_L3_TYPE_IPV4	0x0
-#define	AQC_TX_CT_CMD_L3_TYPE_IPV6	0x2
-#define	AQC_TX_CT_CMD_L4_TYPE_UDP	0x0
-#define	AQC_TX_CT_CMD_L4_TYPE_TCP	0x4
-
-static inline void
-aqc_tx_desc_packet(struct aqc_desc *desc, void *data_buf_addr, size_t pay_len,
-    int ct_en, int ct_idx, uint8_t tx_cmd, int eop, size_t buf_len,
-    int des_typ)
-{
-
-	desc->field1 = (uint64_t)data_buf_addr;
-	desc->field2 =
-	    ((pay_len & AQC_DESC_TX_PAY_LEN_MASK)
-	     << AQC_DESC_TX_PAY_LEN_SHIFT) |
-	    ((uint64_t)(ct_en & AQC_DESC_TX_CT_EN_MASK) << AQC_DESC_TX_CT_EN_SHIFT) |
-	    ((uint64_t)(ct_idx & AQC_DESC_TX_CT_IDX_MASK) << AQC_DESC_TX_CT_IDX_SHIFT) |
-	    (tx_cmd << AQC_DESC_TX_CMD_SHIFT) |
-	    ((eop & AQC_DESC_TX_EOP_MASK) << AQC_DESC_TX_EOP_SHIFT) |
-	    ((buf_len & AQC_DESC_TX_BUF_LEN_MASK)
-	     << AQC_DESC_TX_BUF_LEN_SHIFT) |
-	    ((des_typ & AQC_DESC_TX_DES_TYP_MASK)
-	     << AQC_DESC_TX_DES_TYP_SHIFT);
-}
-
-static inline void
-aqc_tx_desc_context(struct aqc_desc *desc, int mss_len, int l4_len, int l3_len,
-    int l2_len, int ct_cmd, uint16_t vlan_tag, int ct_idx, int des_typ)
-{
-
-	desc->field1 = 0;
-	desc->field2 =
-	    ((uint64_t)(mss_len & AQC_DESC_TX_CTX_MSS_LEN_MASK)
-	     << AQC_DESC_TX_CTX_MSS_LEN_SHIFT) |
-	    ((uint64_t)(l4_len * AQC_DESC_TX_CTX_L4_LEN_MASK)
-	     << AQC_DESC_TX_CTX_L4_LEN_SHIFT) |
-	    ((uint64_t)(l3_len * AQC_DESC_TX_CTX_L3_LEN_MASK)
-	     << AQC_DESC_TX_CTX_L3_LEN_SHIFT) |
-	    ((uint64_t)(l2_len * AQC_DESC_TX_CTX_L2_LEN_MASK)
-	     << AQC_DESC_TX_CTX_L2_LEN_SHIFT) |
-	    ((ct_cmd * AQC_DESC_TX_CTX_CT_CMD_MASK)
-	     << AQC_DESC_TX_CTX_CT_CMD_SHIFT) |
-	    (vlan_tag << AQC_DESC_TX_CTX_VLAN_TAG_SHIFT) |
-	    ((ct_idx & AQC_DESC_TX_CTX_CT_IDX_MASK)
-	     << AQC_DESC_TX_CTX_CT_IDX_SHIFT) |
-	    ((des_typ & AQC_DESC_TX_CTX_DES_TYP_MASK)
-	     << AQC_DESC_TX_CTX_DES_TYP_SHIFT);
-}
 
 extern struct if_txrx aqc_txrx;
 
