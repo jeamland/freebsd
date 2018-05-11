@@ -575,7 +575,7 @@ aqc_if_tx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs,
 
 	value = aqc_hw_read(softc, AQC_REG_TX_DMA_THRESHOLD(0));
 	value &=
-	    AQC_TX_DMA_THRESHOLD_WRB_MASK << AQC_TX_DMA_THRESHOLD_WRB_SHIFT;
+	    ~(AQC_TX_DMA_THRESHOLD_WRB_MASK << AQC_TX_DMA_THRESHOLD_WRB_SHIFT);
 	aqc_hw_write(softc, AQC_REG_TX_DMA_THRESHOLD(0), value);
 
 	return (0);
