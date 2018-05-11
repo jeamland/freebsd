@@ -57,6 +57,8 @@
 #define	AQC_TX_RING_COUNT	4
 #define	AQC_RX_RING_COUNT	4
 
+#define	AQC_TXBUF_MAX		160
+
 struct aqc_ring;
 struct aqc_softc;
 

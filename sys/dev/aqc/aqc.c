@@ -414,8 +414,18 @@ aqc_if_attach_post(if_ctx_t ctx)
 	ifmedia_set(softc->media, IFM_ETHER | IFM_AUTO);
 
 	/* XXX TSO flags */
-	/* XXX TX writeback interrupt enable */
-	/* XXX TPO2 something? undocumented register 0x00007040 */
+
+	value = aqc_hw_read(softc, AQC_REG_TX_INTERRUPT_CONTROL);
+	value |= AQC_TX_INTERRUPT_CONTROL_DESC_WRB_EN;
+	aqc_hw_write(softc, AQC_REG_TX_INTERRUPT_CONTROL, value);
+
+	if (AQC_HW_FEATURE(softc, AQC_HW_FEATURE_TPO2)) {
+		aqc_hw_write(softc, AQC_REG_TX_SPARE_CONTROL_DEBUG,
+		    0x00010000);
+	} else {
+		aqc_hw_write(softc, AQC_REG_TX_SPARE_CONTROL_DEBUG,
+		    0x00000000);
+	}
 
 	value = aqc_hw_read(softc, AQC_REG_TX_DCA_CONTROL_33);
 	value &= ~(AQC_TX_DCA_EN + AQC_TX_DCA_MODE_MASK);
@@ -433,13 +443,64 @@ aqc_if_attach_post(if_ctx_t ctx)
 	aqc_fw_set_link_speed(softc, softc->link_speeds);
 	aqc_fw_set_state(softc, AQC_MPI_INIT);
 
-	/* XXX TX DMA debug toggle. Undocumented register 0x00008920 */
-
 	/* XXX qos */
+	value = aqc_hw_read(softc, AQC_REG_TX_PKT_SCHED_DESC_RATE_CONTROL);
+	value &= ~AQC_TX_PKT_SCHED_DESC_RATE_TA_RST;
+	aqc_hw_write(softc, AQC_REG_TX_PKT_SCHED_DESC_RATE_CONTROL, value);
+	value &= ~(AQC_TX_PKT_SCHED_DESC_RATE_LIMIT_MASK <<
+	    AQC_TX_PKT_SCHED_DESC_RATE_LIMIT_SHIFT);
+	value |= 0xa << AQC_TX_PKT_SCHED_DESC_RATE_LIMIT_SHIFT;
+	aqc_hw_write(softc, AQC_REG_TX_PKT_SCHED_DESC_RATE_CONTROL, value);
+
+	value = aqc_hw_read(softc, AQC_REG_TX_PKT_SCHED_DESC_VM_CONTROL);
+	value &= ~AQC_TX_PKT_SCHED_DESC_VM_ARB_MODE;
+	aqc_hw_write(softc, AQC_REG_TX_PKT_SCHED_DESC_VM_CONTROL, value);
+
+	value = aqc_hw_read(softc, AQC_REG_TX_PKT_SCHED_DESC_TC_CONTROL_1);
+	value &= ~(AQC_TX_PKT_SCHED_DESC_TC_ARB_MODE_MASK <<
+	    AQC_TX_PKT_SCHED_DESC_TC_ARB_MODE_SHIFT);
+	value |= AQC_TX_PKT_SCHED_DESC_TC_ARB_MODE_RR <<
+	    AQC_TX_PKT_SCHED_DESC_TC_ARB_MODE_SHIFT;
+	aqc_hw_write(softc, AQC_REG_TX_PKT_SCHED_DESC_TC_CONTROL_1, value);
+
+	value = aqc_hw_read(softc, AQC_REG_TX_PKT_SCHED_DATA_TC_CONTROL_1);
+	value &= ~AQC_TX_PKT_SCHED_DATA_TC_ARB_MODE;
+	aqc_hw_write(softc, AQC_REG_TX_PKT_SCHED_DATA_TC_CONTROL_1, value);
+
+	value = (0xfff << AQC_TX_PKT_SCHED_DATA_TC_CREDIT_MAX_SHIFT) |
+	    (0x64 << AQC_TX_PKT_SCHED_DATA_TC_WEIGHT_SHIFT);
+	aqc_hw_write(softc, AQC_REG_TX_PKT_SCHED_DATA_TC_CONTROL(0), value);
+
+	value = (0x50 << AQC_TX_PKT_SCHED_DESC_TC_CREDIT_MAX_SHIFT) |
+	    (0x1e << AQC_TX_PKT_SCHED_DESC_TC_WEIGHT_SHIFT);
+	aqc_hw_write(softc, AQC_REG_TX_PKT_SCHED_DESC_TC_CONTROL(0), value);
+
+	value = AQC_TXBUF_MAX << AQC_TX_PACKET_BUFFER_SIZE_SHIFT;
+	aqc_hw_write(softc, AQC_REG_TX_PACKET_BUFFER_1(0), value);
+
+	value = ((AQC_TXBUF_MAX * (1024 / 32) * 66) / 100) <<
+	    AQC_TX_PACKET_BUFFER_HI_THRESH_SHIFT;
+	value |= ((AQC_TXBUF_MAX * (1024 / 32) * 50) / 100) <<
+	    AQC_TX_PACKET_BUFFER_LO_THRESH_SHIFT;
+	aqc_hw_write(softc, AQC_REG_TX_PACKET_BUFFER_2(0), value);
+
 	/* XXX rss */
 	/* XXX rss hash */
 
 	aqc_hw_update_stats(softc);
+
+	value = aqc_hw_read(softc, AQC_REG_PCIE_CONTROL_6);
+	value &= ~(
+	    (AQC_PCIE_RDM_MRRS_OVERRIDE_MASK <<
+	     AQC_PCIE_RDM_MRRS_OVERRIDE_SHIFT) |
+	    (AQC_PCIE_TDM_MRRS_OVERRIDE_MASK <<
+	     AQC_PCIE_TDM_MRRS_OVERRIDE_SHIFT)
+	);
+	value |= (0x4 << AQC_PCIE_RDM_MRRS_OVERRIDE_SHIFT) |
+	    (0x4 << AQC_PCIE_TDM_MRRS_OVERRIDE_SHIFT);
+	aqc_hw_write(softc, AQC_REG_PCIE_CONTROL_6, value);
+
+	aqc_hw_write(softc, AQC_TX_DMA_TOTAL_REQUEST_LIMIT, 24);
 
 	/* XXX interrupt global control */
 	/* XXX interrupt auto mask */
@@ -509,7 +570,13 @@ aqc_if_tx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs,
 	    << AQC_TX_DMA_DESCRIPTOR_LEN_SHIFT);
 	value |= (softc->scctx->isc_ntxd[0] & AQC_TX_DMA_DESCRIPTOR_LEN_MASK)
 	    << AQC_TX_DMA_DESCRIPTOR_LEN_SHIFT;
+	value &= ~AQC_TX_DMA_DESCRIPTOR_WRB_HDR_EN;
 	aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(0), value);
+
+	value = aqc_hw_read(softc, AQC_REG_TX_DMA_THRESHOLD(0));
+	value &=
+	    AQC_TX_DMA_THRESHOLD_WRB_MASK << AQC_TX_DMA_THRESHOLD_WRB_SHIFT;
+	aqc_hw_write(softc, AQC_REG_TX_DMA_THRESHOLD(0), value);
 
 	return (0);
 }
@@ -558,6 +625,10 @@ aqc_if_init(if_ctx_t ctx)
 	value = aqc_hw_read(softc, AQC_REG_TX_PACKET_BUFFER_CONTROL_1);
 	value |= AQC_TX_PACKET_BUFFER_TX_BUF_EN;
 	aqc_hw_write(softc, AQC_REG_TX_PACKET_BUFFER_CONTROL_1, value);
+
+	value = aqc_hw_read(softc, AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(0));
+	value |= AQC_TX_DMA_DESCRIPTOR_EN;
+	aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(0), value);
 }
 
 static void

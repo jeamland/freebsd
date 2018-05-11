@@ -49,7 +49,7 @@ __FBSDID("$FreeBSD$");
 #define	AQC_DESC_TX_CT_EN_MASK		0x1
 #define	AQC_DESC_TX_CT_EN_SHIFT		45
 #define	AQC_DESC_TX_CT_IDX_MASK		0x1
-#define	AQC_DESC_TX_CT_IDX_SHIFT	46
+#define	AQC_DESC_TX_CT_IDX_SHIFT	44
 #define	AQC_DESC_TX_CMD_SHIFT		22
 #define	AQC_DESC_TX_EOP_MASK		0x1
 #define	AQC_DESC_TX_EOP_SHIFT		21
@@ -176,13 +176,6 @@ aqc_isc_txd_encap(void *arg, if_pkt_info_t pi)
 	aqc_tx_desc_packet(&softc->tx_ring[pi->ipi_pidx], segs[0].ds_addr,
 	    pi->ipi_len, 0, 0, AQC_TX_CMD_DESC_WRITEBACK, 1, segs[0].ds_len);
 	pi->ipi_new_pidx = pi->ipi_pidx + 1;
-	aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_TAIL_IDX(0),
-	    pi->ipi_pidx + 1);
-
-	DELAY(1000);
-	device_printf(softc->dev, "%16jx\n", softc->tx_ring[pi->ipi_pidx].field2);
-	device_printf(softc->dev, "%16jx\n", softc->tx_ring[pi->ipi_pidx].field2);
-	device_printf(softc->dev, "%08x\n", aqc_hw_read(softc, AQC_REG_TX_DMA_DESCRIPTOR_HEAD_IDX(0)));
 
 	return (0);
 }
@@ -193,7 +186,18 @@ aqc_isc_txd_flush(void *arg, uint16_t txqid, qidx_t pidx)
 	struct aqc_softc *softc;
 
 	softc = arg;
+	device_printf(softc->dev, "txd_flush %d to %d\n", txqid, pidx);
 	aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_TAIL_IDX(txqid), pidx);
+
+	if (pidx > 0) {
+		DELAY(1000);
+		device_printf(softc->dev, "%16jx\n", softc->tx_ring[pidx - 1].field1);
+		device_printf(softc->dev, "%16jx\n", softc->tx_ring[pidx - 1].field2);
+		device_printf(softc->dev, "%08x\n", aqc_hw_read(softc, AQC_REG_TX_DMA_DESCRIPTOR_HEAD_IDX(txqid)));
+
+		aqc_hw_update_stats(softc);
+		device_printf(softc->dev, "erpt=%jd\n", softc->stats.erpt);
+	}
 }
 
 static int
