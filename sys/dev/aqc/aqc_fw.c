@@ -78,6 +78,8 @@ aqc_fw_probe(struct aqc_softc *softc)
 		return (EOPNOTSUPP);
 	}
 
+	aqc_fw_set_state(softc, AQC_MPI_RESET);
+
 	return (softc->fw_ops->init(softc));
 }
 
