@@ -383,7 +383,7 @@ aqc_if_attach_post(if_ctx_t ctx)
 	struct aqc_softc *softc;
 	if_t ifp;
 	uint32_t value;
-	int rc;
+	int rc, i;
 
 	softc = iflib_get_softc(ctx);
 	ifp = iflib_get_ifp(ctx);
@@ -437,13 +437,73 @@ aqc_if_attach_post(if_ctx_t ctx)
 	aqc_hw_write(softc, AQC_REG_TX_PACKET_BUFFER_CONTROL_1, value);
 
 	/* XXX init RX path */
+	value = aqc_hw_read(softc, AQC_REG_RX_PACKET_BUFFER_CONTROL_1);
+	value &= ~(AQC_RX_PACKET_BUFFER_FC_MODE_MASK <<
+	    AQC_RX_PACKET_BUFFER_FC_MODE_SHIFT);
+	value |= AQC_RX_PACKET_BUFFER_TC_MODE |
+	     (AQC_RX_PACKET_BUFFER_FC_MODE_EN <<
+	      AQC_RX_PACKET_BUFFER_FC_MODE_SHIFT);
+	aqc_hw_write(softc, AQC_REG_RX_PACKET_BUFFER_CONTROL_1, value);
+
+	value = AQC_RX_RSS_RXQ_EN;
+	for (i = 0; i < 8; i++) {
+		value |= 3 << AQC_RX_RSS_SEL_SHIFT(i);
+	}
+	aqc_hw_write(softc, AQC_REG_RX_RSS_CONTROL_1, value);
+
+	for (i = 0; i < AQC_HW_MAX_UNICAST; i++) {
+		value = aqc_hw_read(softc, AQC_REG_RX_UNICAST_FILTER_2(i));
+		if (i == 0) {
+			value |= AQC_RX_UNICAST_FILTER_L2_EN;
+		} else {
+			value &= ~AQC_RX_UNICAST_FILTER_L2_EN;
+		}
+		value &= ~AQC_RX_UNICAST_FILTER_ACT_MASK;
+		value |= AQC_RX_UNICAST_FILTER_ACT_HOST;
+		aqc_hw_write(softc, AQC_REG_RX_UNICAST_FILTER_2(i), value);
+	}
+
+	aqc_hw_write(softc, AQC_REG_RX_MULTICAST_FILTER_MASK, 0);
+	value = AQC_RX_MULTICAST_FILTER_ACT_HOST;
+	value |= 0xfff;
+	aqc_hw_write(softc, AQC_REG_RX_MULTICAST_FILTER(0), value);
+
+	value = (0x88a8 << AQC_RX_VLAN_OUTER_SHIFT) |
+	    (0x8100 << AQC_RX_VLAN_INNER_SHIFT);
+	aqc_hw_write(softc, AQC_REG_RX_VLAN_CONTROL_2, value);
+
+	value = aqc_hw_read(softc, AQC_REG_RX_VLAN_CONTROL_1);
+	value |= AQC_RX_VLAN_PROMISC_MODE;
+	aqc_hw_write(softc, AQC_REG_RX_VLAN_CONTROL_1, value);
+
+	value = aqc_hw_read(softc, AQC_REG_RX_INTERRUPT_CONTROL);
+	value |= AQC_RX_INTERRUPT_CONTROL_DESC_WRB_EN;
+	aqc_hw_write(softc, AQC_REG_RX_INTERRUPT_CONTROL, value);
+
+	if (AQC_HW_FEATURE(softc, AQC_HW_FEATURE_RPF2)) {
+		aqc_hw_write(softc, AQC_REG_RX_SPARE_CONTROL_DEBUG,
+		    0x000f0000);
+	} else {
+		aqc_hw_write(softc, AQC_REG_RX_SPARE_CONTROL_DEBUG,
+		    0x00000000);
+	}
+
+	value = aqc_hw_read(softc, AQC_REG_RX_FILTER_CONTROL_1);
+	value &= ~(AQC_RX_FILTER_BC_ACT_MASK);
+	value |= AQC_RX_FILTER_BC_ACT_HOST;
+	value |= 0xffff << AQC_RX_FILTER_BC_THRESH_SHIFT;
+	aqc_hw_write(softc, AQC_REG_RX_FILTER_CONTROL_1, value);
+
+	value = aqc_hw_read(softc, AQC_REG_RX_DCA_CONTROL_33);
+	value &= ~(AQC_RX_DCA_EN + AQC_RX_DCA_MODE_MASK);
+	value |= AQC_RX_DCA_MODE_LEGACY;
+	aqc_hw_write(softc, AQC_REG_RX_DCA_CONTROL_33, value);
 
 	aqc_hw_set_mac(softc);
 
 	aqc_fw_set_link_speed(softc, softc->link_speeds);
 	aqc_fw_set_state(softc, AQC_MPI_INIT);
 
-	/* XXX qos */
 	value = aqc_hw_read(softc, AQC_REG_TX_PKT_SCHED_DESC_RATE_CONTROL);
 	value &= ~AQC_TX_PKT_SCHED_DESC_RATE_TA_RST;
 	aqc_hw_write(softc, AQC_REG_TX_PKT_SCHED_DESC_RATE_CONTROL, value);
@@ -483,6 +543,8 @@ aqc_if_attach_post(if_ctx_t ctx)
 	value |= ((AQC_TXBUF_MAX * (1024 / 32) * 50) / 100) <<
 	    AQC_TX_PACKET_BUFFER_LO_THRESH_SHIFT;
 	aqc_hw_write(softc, AQC_REG_TX_PACKET_BUFFER_2(0), value);
+
+	/* XXX RX qos */
 
 	/* XXX rss */
 	/* XXX rss hash */
