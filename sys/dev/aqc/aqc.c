@@ -562,7 +562,7 @@ aqc_if_tx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs,
 	
 	softc = iflib_get_softc(ctx);
 
-	for (i = 0; i < ntxqs; i++) {
+	for (i = 0; i < ntxqsets; i++) {
 		ring = &softc->tx_ring[i];
 
 		ring->descriptors = (struct aqc_desc *)vaddrs[i];
@@ -603,7 +603,7 @@ aqc_if_rx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs,
 
 	softc = iflib_get_softc(ctx);
 
-	for (i = 0; i < nrxqs; i++) {
+	for (i = 0; i < nrxqsets; i++) {
 		ring = &softc->rx_ring[i];
 
 		ring->descriptors = (struct aqc_desc *)vaddrs[i];
