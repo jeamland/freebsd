@@ -129,6 +129,9 @@ static void	aqc_if_vlan_unregister(if_ctx_t ctx, uint16_t vtag);
 static void	aqc_if_debug(if_ctx_t ctx);
 static void	aqc_if_led_func(if_ctx_t ctx, int onoff);
 
+/* Internal interrupt handler */
+static int	aqc_handle_rx(void *);
+
 static device_method_t aqc_methods[] = {
 	DEVMETHOD(device_register, aqc_register),
 	DEVMETHOD(device_probe, iflib_device_probe),
@@ -578,8 +581,12 @@ static int
 aqc_if_detach(if_ctx_t ctx)
 {
 	struct aqc_softc *softc;
+	int i;
 
 	softc = iflib_get_softc(ctx);
+
+	for (i = 0; i < softc->scctx->isc_nrxqsets; i++)
+		iflib_irq_free(ctx, &softc->rx_ring[i].irq);
 
 	if (softc->mmio_res != NULL)
 		bus_release_resource(softc->dev, SYS_RES_MEMORY,
@@ -903,14 +910,39 @@ static int
 aqc_if_msix_intr_assign(if_ctx_t ctx, int msix)
 {
 	struct aqc_softc *softc;
-	int i;
+	int i, rc;
+	char irq_name[16];
 
 	softc = iflib_get_softc(ctx);
-	for (i=0; i < softc->scctx->isc_ntxqsets; i++)
+
+	for (i = 0; i < softc->scctx->isc_nrxqsets; i++) {
+		snprintf(irq_name, sizeof(irq_name), "rxq%d", i);
+		rc = iflib_irq_alloc_generic(ctx, &softc->rx_ring[i].irq,
+		    i + 1, IFLIB_INTR_RX, aqc_handle_rx, &softc->rx_ring[i],
+		    i, irq_name);
+
+		if (rc) {
+			device_printf(softc->dev,
+			    "failed to set up RX handler\n");
+			i--;
+			goto fail;
+		}
+
+		softc->rx_ring[i].msix = i;
+	}
+
+	for (i = 0; i < softc->scctx->isc_ntxqsets; i++) {
+		snprintf(irq_name, sizeof(irq_name), "txq%d", i);
 		iflib_softirq_alloc_generic(ctx, NULL, IFLIB_INTR_TX, NULL, i,
-		    "tx_cp");
+		    irq_name);
+	}
 
 	return (0);
+
+fail:
+	for (; i >= 0; i--)
+		iflib_irq_free(ctx, &softc->rx_ring[i].irq);
+	return (rc);
 }
 
 /* VLAN support */
@@ -958,3 +990,9 @@ aqc_intr(void *arg)
 	return (0);
 }
 
+static int
+aqc_handle_rx(void *arg __unused)
+{
+
+	return (FILTER_SCHEDULE_THREAD);
+}
