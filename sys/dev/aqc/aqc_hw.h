@@ -33,17 +33,6 @@
 
 #define	AQC_HW_SUPPORT_SPEED(s)	((softc)->link_speeds & s)
 
-#define	AQC_HW_POLL(condition, usecs, iterations, err)			\
-	do {								\
-		unsigned int _i;					\
-		for (_i = (iterations); !(condition) && (_i > 0);	\
-		    _i--) {						\
-			DELAY(usecs);					\
-		}							\
-		if (_i <= 0)						\
-			err = ETIMEDOUT;				\
-	} while (0);
-
 #define	AQC_HW_FEATURE(softc, feature)	\
 	(((softc)->chip_features & (feature)) != 0)
 

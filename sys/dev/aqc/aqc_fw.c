@@ -87,13 +87,15 @@ int
 aqc_fw_copyin(struct aqc_softc *softc, uint32_t addr, uint32_t len,
     uint32_t *buffer)
 {
-	int error;
+	int i, error;
 
 	error = 0;
 
-	AQC_HW_POLL(aqc_hw_read(softc, AQC_REG_FW_RAM_SEMAPHORE) == 1, 1, 10000,
-	    error);
-	if (error != 0) {
+	for (i = 0; i < 10000; i++) {
+		if (aqc_hw_read(softc, AQC_REG_FW_RAM_SEMAPHORE) == 1)
+			break;
+	}
+	if (i >= 10000) {
 		aqc_hw_write(softc, AQC_REG_FW_RAM_SEMAPHORE, 1);
 		if (aqc_hw_read(softc, AQC_REG_FW_RAM_SEMAPHORE) == 0) {
 			return (ETIMEDOUT);
@@ -105,14 +107,19 @@ aqc_fw_copyin(struct aqc_softc *softc, uint32_t addr, uint32_t len,
 	for (; len > 0 && error == 0; len--) {
 		aqc_hw_write(softc, AQC_REG_MAILBOX_1, AQC_MAILBOX_EXECUTE);
 
-		if (AQC_HW_FEATURE(softc, AQC_HW_FEATURE_REV_B0)) {
-			AQC_HW_POLL(
-			    aqc_hw_read(softc, AQC_REG_MAILBOX_ADDRESS) != addr,
-			    1, 1000, error);
-		} else {
-			AQC_HW_POLL(
-			    (aqc_hw_read(softc, AQC_REG_MAILBOX_1) &
-			     AQC_MAILBOX_BUSY) == 0, 1, 1000, error);
+		for (i = 0; i < 1000; i++) {
+			if (AQC_HW_FEATURE(softc, AQC_HW_FEATURE_REV_B0)) {
+				if (aqc_hw_read(softc, AQC_REG_MAILBOX_ADDRESS) != addr)
+					break;
+			} else {
+				if ((aqc_hw_read(softc, AQC_REG_MAILBOX_1) & AQC_MAILBOX_BUSY) == 0)
+					break;
+			}
+		}
+
+		if (i >= 1000) {
+			device_printf(softc->dev, "firmware timeout\n");
+			return (ETIMEDOUT);
 		}
 
 		*buffer = aqc_hw_read(softc, AQC_REG_MAILBOX_DATA);

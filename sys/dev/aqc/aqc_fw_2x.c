@@ -61,14 +61,18 @@ __FBSDID("$FreeBSD$");
 static int
 aqc_fw_2x_init(struct aqc_softc *softc)
 {
-	int error;
+	int i;
 
-	error = 0;
+	for (i = 0; i < 1000; i++) {
+		softc->mbox_addr = aqc_hw_read(softc, AQC_REG_MPI_MBOX_ADDR);
+		if (softc->mbox_addr != 0)
+			break;
+	}
 
-	AQC_HW_POLL(
-	    (softc->mbox_addr = aqc_hw_read(softc, AQC_REG_MPI_MBOX_ADDR)) != 0,
-	    1000, 10, error);
-	return (error);
+	if (i >= 1000)
+		return (ETIMEDOUT);
+
+	return (0);
 }
 
 static int

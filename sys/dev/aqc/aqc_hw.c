@@ -163,9 +163,9 @@ aqc_hw_set_mac(struct aqc_softc *softc)
 int
 aqc_hw_soft_reset(struct aqc_softc *softc)
 {
-	int i, err;
-	uint32_t	flash_boot_status, boot_exit_code, value;
-	uint32_t	fw_version;
+	int i;
+	uint32_t flash_boot_status, boot_exit_code, value;
+	uint32_t fw_version;
 
 	for (i = 0; i < 1000; i++) {
 		flash_boot_status = aqc_hw_read(softc,
@@ -191,11 +191,21 @@ aqc_hw_soft_reset(struct aqc_softc *softc)
 	fw_version = aqc_hw_read(softc, AQC_REG_FW_IMAGE_ID);
 	if (aqc_fw_version_check(AQC_FW_VERSION_1X, fw_version)) {
 		value = aqc_hw_read(softc, AQC_REG_MPI_CONTROL);
-		value &= 0xffff;
+		value &= ~AQC_MPI_FW_1X_STATE_MASK;
+		value |= AQC_MPI_DEINIT;
 		aqc_hw_write(softc, AQC_REG_MPI_CONTROL, value);
 		
-		AQC_HW_POLL((aqc_hw_read(softc, AQC_REG_MPI_FW_1X_STATE) &
-		    AQC_MPI_FW_1X_STATE_MASK) == AQC_MPI_DEINIT, 10, 1000, err);
+		for (i = 0; i < 1000; i++) {
+			value = aqc_hw_read(softc, AQC_REG_MPI_FW_1X_STATE);
+			if ((value & AQC_MPI_FW_1X_STATE_MASK) == AQC_MPI_DEINIT)
+				break;
+			DELAY(10 * 1000);
+		}
+
+		if (i >= 1000) {
+			device_printf(softc->dev, "failed to reset firmware\n");
+			return (ENXIO);
+		}
 	}
 
 	if (boot_exit_code != 0) {

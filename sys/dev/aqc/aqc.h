@@ -114,7 +114,7 @@ struct aqc_fw_stats {
 	uint32_t ubtc;		/* unicast bytes transmitted */
 	uint32_t dpc;		/* rx dropped packet count */
 	uint32_t padding;
-};
+} __packed;
 
 struct aqc_stats {
 	uint64_t uprc;			/* unicast packets received */
@@ -141,7 +141,7 @@ struct aqc_stats {
 struct aqc_desc {
 	uint64_t	field1;
 	uint64_t	field2;
-};
+} __packed;
 
 struct aqc_softc {
 	device_t		dev;
