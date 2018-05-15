@@ -151,6 +151,14 @@ aqc_tx_desc_context(struct aqc_desc *desc, int mss_len, int l4_len, int l3_len,
 	    (AQC_DESC_TX_DES_TYP_CONTEXT << AQC_DESC_TX_CTX_DES_TYP_SHIFT);
 }
 
+static inline void
+aqc_rx_desc(struct aqc_desc *desc, bus_addr_t data_buf_addr)
+{
+
+	desc->field1 = (uint64_t)data_buf_addr;
+	desc->field2 = 0;
+}
+
 /* iflib txrx interface prototypes */
 static int	aqc_isc_txd_encap(void *arg, if_pkt_info_t pi);
 static void	aqc_isc_txd_flush(void *arg, uint16_t txqid, qidx_t pidx);
@@ -262,23 +270,54 @@ done:
 static void
 aqc_isc_rxd_refill(void *arg, if_rxd_update_t iru)
 {
+	struct aqc_softc *softc;
+	struct aqc_ring *ring;
+	qidx_t i, pidx;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	softc = arg;
+	ring = &softc->rx_ring[iru->iru_qsidx];
+	pidx = iru->iru_pidx;
+
+	for (i = 0; i < iru->iru_count; i++) {
+		aqc_rx_desc(&ring->descriptors[pidx], iru->iru_paddrs[i]);
+
+		pidx++;
+		if (pidx >= ring->ndesc)
+			pidx = 0;
+	}
+
+	return;
 }
 
 static void
 aqc_isc_rxd_flush(void *arg, uint16_t rxqid, uint8_t flid __unused, qidx_t pidx)
 {
+	struct aqc_softc *softc;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	softc = arg;
+	aqc_hw_write(softc, AQC_REG_RX_DMA_DESCRIPTOR_TAIL_IDX(rxqid), pidx);
 }
 
 static int
 aqc_isc_rxd_available(void *arg, uint16_t rxqid, qidx_t idx, qidx_t budget)
 {
+	struct aqc_softc *softc;
+	struct aqc_ring *ring;
+	uint32_t head, tail;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
-	return (EIO);
+	softc = arg;
+	ring = &softc->rx_ring[rxqid];
+
+	head = aqc_hw_read(softc, AQC_REG_RX_DMA_DESCRIPTOR_HEAD_IDX(rxqid));
+	tail = aqc_hw_read(softc, AQC_REG_RX_DMA_DESCRIPTOR_TAIL_IDX(rxqid));
+
+	if (head == tail) {
+		return (ring->ndesc);
+	} else if (head > tail) {
+		tail += ring->ndesc;
+	}
+
+	return (tail - head);
 }
 
 static int
