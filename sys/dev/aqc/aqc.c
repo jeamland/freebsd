@@ -788,6 +788,7 @@ static void
 aqc_if_timer(if_ctx_t ctx, uint16_t qid)
 {
 	struct aqc_softc *softc;
+	struct ifmediareq ifmr;
 	uint64_t ticks_now;
 
 	softc = iflib_get_softc(ctx);
@@ -797,6 +798,8 @@ aqc_if_timer(if_ctx_t ctx, uint16_t qid)
 	if (ticks_now - softc->admin_ticks >= hz) {
 		softc->admin_ticks = ticks_now;
 		iflib_admin_intr_deferred(ctx);
+
+		aqc_if_media_status(ctx, &ifmr);
 	}
 
 	return;
