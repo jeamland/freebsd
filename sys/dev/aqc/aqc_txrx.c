@@ -116,6 +116,18 @@ aqc_tx_desc_packet(struct aqc_desc *desc, bus_addr_t data_buf_addr,
 	    (AQC_DESC_TX_DES_TYP_DESCRIPTOR << AQC_DESC_TX_DES_TYP_SHIFT);
 }
 
+static inline bool
+aqc_tx_desc_done(struct aqc_desc *desc)
+{
+	int des_typ;
+
+	des_typ = desc->field2 & (AQC_DESC_TX_DES_TYP_DESCRIPTOR
+	    << AQC_DESC_TX_DES_TYP_SHIFT);
+	if (des_typ != AQC_DESC_TX_DES_TYP_DESCRIPTOR)
+		return (true);
+	return (desc->field2 & (AQC_DESC_TX_DD_MASK << AQC_DESC_TX_DD_SHIFT));
+}
+
 static inline void __unused
 aqc_tx_desc_context(struct aqc_desc *desc, int mss_len, int l4_len, int l3_len,
     int l2_len, int ct_cmd, uint16_t vlan_tag, int ct_idx)
@@ -166,14 +178,36 @@ static int
 aqc_isc_txd_encap(void *arg, if_pkt_info_t pi)
 {
 	struct aqc_softc *softc;
+	struct aqc_ring *ring;
 	bus_dma_segment_t *segs;
+	qidx_t i, pidx;
+	uint32_t pay_len, eop;
 
 	softc = arg;
+	ring = &softc->tx_ring[pi->ipi_qsidx];
 	segs = pi->ipi_segs;
+	pidx = pi->ipi_pidx;
 
-	aqc_tx_desc_packet(&softc->tx_ring[pi->ipi_pidx], segs[0].ds_addr,
-	    pi->ipi_len, 0, 0, AQC_TX_CMD_DESC_WRITEBACK, 1, segs[0].ds_len);
-	pi->ipi_new_pidx = pi->ipi_pidx + 1;
+	pay_len = pi->ipi_len;
+	eop = 0;
+
+	for (i = 0; i < pi->ipi_nsegs; i++) {
+		if (i == pi->ipi_nsegs - 1)
+			eop = 1;
+
+		aqc_tx_desc_packet(&ring->descriptors[pidx], segs[i].ds_addr,
+		    pay_len, 0, 0, AQC_TX_CMD_DESC_WRITEBACK, eop,
+		    segs[i].ds_len);
+
+		if (i == 0)
+			pay_len = 0;
+
+		pidx++;
+		if (pidx >= ring->ndesc)
+			pidx = 0;
+	}
+
+	pi->ipi_new_pidx = pidx;
 
 	return (0);
 }
@@ -190,9 +224,39 @@ aqc_isc_txd_flush(void *arg, uint16_t txqid, qidx_t pidx)
 static int
 aqc_isc_txd_credits_update(void *arg, uint16_t txqid, bool clear)
 {
+	struct aqc_softc *softc;
+	struct aqc_ring *ring;
+	qidx_t pidx;
+	uint32_t head, tail;
+	int avail;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
-	return (EIO);
+	softc = arg;
+	ring = &softc->tx_ring[txqid];
+	avail = 0;
+
+	head = aqc_hw_read(softc, AQC_REG_TX_DMA_DESCRIPTOR_HEAD_IDX(txqid));
+	tail = aqc_hw_read(softc, AQC_REG_TX_DMA_DESCRIPTOR_HEAD_IDX(txqid));
+
+	if (head == tail) {
+		avail = ring->ndesc;
+		goto done;
+	}
+
+	pidx = tail;
+	do {
+		if (aqc_tx_desc_done(&ring->descriptors[pidx])) {
+			avail++;
+			if (!clear)
+				goto done;
+		}
+
+		pidx++;
+		if (pidx >= ring->ndesc)
+			pidx = 0;
+	} while (pidx != head);
+
+done:
+	return (avail);
 }
 
 static void

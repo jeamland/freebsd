@@ -63,6 +63,9 @@
 
 #define AQC_TSO_SIZE	UINT16_MAX
 
+#define	AQC_MAX_TX_QUEUES	4
+#define	AQC_MAX_RX_QUEUES	4
+
 #define	AQC_MIN_RXD	16
 #define	AQC_MIN_TXD	16
 
@@ -143,6 +146,13 @@ struct aqc_desc {
 	uint64_t	field2;
 } __packed;
 
+struct aqc_ring {
+	qidx_t			ndesc;
+	struct if_irq		irq;
+	int			msix;
+	struct aqc_desc		*descriptors;
+};
+
 struct aqc_softc {
 	device_t		dev;
 	if_ctx_t		ctx;
@@ -168,8 +178,8 @@ struct aqc_softc {
 	bus_space_handle_t	mmio_handle;
 	bus_size_t		mmio_size;
 
-	struct aqc_desc *	tx_ring;
-	struct aqc_desc *	rx_ring;
+	struct aqc_ring 	tx_ring[AQC_MAX_TX_QUEUES];
+	struct aqc_ring		rx_ring[AQC_MAX_RX_QUEUES];
 
 	struct aqc_stats	stats;
 	struct aqc_fw_stats	fw_stats;

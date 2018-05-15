@@ -301,8 +301,8 @@ aqc_if_attach_pre(if_ctx_t ctx)
 	scctx->isc_txqsizes[0] = sizeof(struct aqc_desc) * scctx->isc_ntxd[0];
 	scctx->isc_rxqsizes[0] = sizeof(struct aqc_desc) * scctx->isc_nrxd[0];
 
-	scctx->isc_ntxqsets_max = 1;
-	scctx->isc_nrxqsets_max = 1;
+	scctx->isc_ntxqsets_max = softc->tx_rings;
+	scctx->isc_nrxqsets_max = softc->rx_rings;
 	/* Fill in scctx stuff. */
 	/* XXX THIS STUFF IS NOT RIGHT YET */
 	#if 0
@@ -556,27 +556,38 @@ aqc_if_tx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs,
     uint64_t *paddrs, int ntxqs, int ntxqsets)
 {
 	struct aqc_softc *softc;
+	struct aqc_ring *ring;
 	uint32_t value;
+	int i;
 	
 	softc = iflib_get_softc(ctx);
-	softc->tx_ring = (struct aqc_desc *)vaddrs[0];
 
-	aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_BASE_LSW(0),
-	    paddrs[0] & 0xffffffff);
-	aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_BASE_MSW(0),
-	    (paddrs[0] & 0xffffffff00000000) >> 32);
-	value = aqc_hw_read(softc, AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(0));
-	value &= ~(AQC_TX_DMA_DESCRIPTOR_LEN_MASK
-	    << AQC_TX_DMA_DESCRIPTOR_LEN_SHIFT);
-	value |= (softc->scctx->isc_ntxd[0] & AQC_TX_DMA_DESCRIPTOR_LEN_MASK)
-	    << AQC_TX_DMA_DESCRIPTOR_LEN_SHIFT;
-	value &= ~AQC_TX_DMA_DESCRIPTOR_WRB_HDR_EN;
-	aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(0), value);
+	for (i = 0; i < ntxqs; i++) {
+		ring = &softc->tx_ring[i];
 
-	value = aqc_hw_read(softc, AQC_REG_TX_DMA_THRESHOLD(0));
-	value &=
-	    ~(AQC_TX_DMA_THRESHOLD_WRB_MASK << AQC_TX_DMA_THRESHOLD_WRB_SHIFT);
-	aqc_hw_write(softc, AQC_REG_TX_DMA_THRESHOLD(0), value);
+		ring->descriptors = (struct aqc_desc *)vaddrs[i];
+		ring->ndesc = softc->scctx->isc_ntxd[i];
+
+		aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_BASE_LSW(i),
+		    paddrs[i] & 0xffffffff);
+		aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_BASE_MSW(i),
+		    (paddrs[i] & 0xffffffff00000000) >> 32);
+
+		value = aqc_hw_read(softc,
+		    AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(i));
+		value &= ~(AQC_TX_DMA_DESCRIPTOR_LEN_MASK
+		    << AQC_TX_DMA_DESCRIPTOR_LEN_SHIFT);
+		value |= (ring->ndesc & AQC_TX_DMA_DESCRIPTOR_LEN_MASK)
+		    << AQC_TX_DMA_DESCRIPTOR_LEN_SHIFT;
+		value &= ~AQC_TX_DMA_DESCRIPTOR_WRB_HDR_EN;
+		aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(i),
+		    value);
+
+		value = aqc_hw_read(softc, AQC_REG_TX_DMA_THRESHOLD(i));
+		value &= ~(AQC_TX_DMA_THRESHOLD_WRB_MASK <<
+		     AQC_TX_DMA_THRESHOLD_WRB_SHIFT);
+		aqc_hw_write(softc, AQC_REG_TX_DMA_THRESHOLD(i), value);
+	}
 
 	return (0);
 }
@@ -586,21 +597,32 @@ aqc_if_rx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs,
     uint64_t *paddrs, int nrxqs, int nrxqsets)
 {
 	struct aqc_softc *softc;
+	struct aqc_ring *ring;
 	uint32_t value;
-	
-	softc = iflib_get_softc(ctx);
-	softc->rx_ring = (struct aqc_desc *)vaddrs[0];
+	int i;
 
-	aqc_hw_write(softc, AQC_REG_RX_DMA_DESCRIPTOR_BASE_LSW(0),
-	    paddrs[0] & 0xffffffff);
-	aqc_hw_write(softc, AQC_REG_RX_DMA_DESCRIPTOR_BASE_MSW(0),
-	    (paddrs[0] & 0xffffffff00000000) >> 32);
-	value = aqc_hw_read(softc, AQC_REG_RX_DMA_DESCRIPTOR_CONTROL(0));
-	value &= ~(AQC_RX_DMA_DESCRIPTOR_LEN_MASK
-	    << AQC_RX_DMA_DESCRIPTOR_LEN_SHIFT);
-	value |= (softc->scctx->isc_ntxd[0] & AQC_RX_DMA_DESCRIPTOR_LEN_MASK)
-	    << AQC_RX_DMA_DESCRIPTOR_LEN_SHIFT;
-	aqc_hw_write(softc, AQC_REG_RX_DMA_DESCRIPTOR_CONTROL(0), value);
+	softc = iflib_get_softc(ctx);
+
+	for (i = 0; i < nrxqs; i++) {
+		ring = &softc->rx_ring[i];
+
+		ring->descriptors = (struct aqc_desc *)vaddrs[i];
+		ring->ndesc = softc->scctx->isc_nrxd[i];
+
+		aqc_hw_write(softc, AQC_REG_RX_DMA_DESCRIPTOR_BASE_LSW(i),
+		    paddrs[i] & 0xffffffff);
+		aqc_hw_write(softc, AQC_REG_RX_DMA_DESCRIPTOR_BASE_MSW(i),
+		    (paddrs[i] & 0xffffffff00000000) >> 32);
+
+		value = aqc_hw_read(softc,
+		    AQC_REG_RX_DMA_DESCRIPTOR_CONTROL(i));
+		value &= ~(AQC_RX_DMA_DESCRIPTOR_LEN_MASK
+		    << AQC_RX_DMA_DESCRIPTOR_LEN_SHIFT);
+		value |= (ring->ndesc & AQC_RX_DMA_DESCRIPTOR_LEN_MASK)
+		    << AQC_RX_DMA_DESCRIPTOR_LEN_SHIFT;
+		aqc_hw_write(softc, AQC_REG_RX_DMA_DESCRIPTOR_CONTROL(i),
+		    value);
+	}
 
 	return (0);
 }
@@ -619,23 +641,40 @@ aqc_if_init(if_ctx_t ctx)
 	struct aqc_softc *softc;
 	struct ifmediareq ifmr;
 	uint32_t value;
+	int i;
 
 	softc = iflib_get_softc(ctx);
+
 	aqc_if_media_status(ctx, &ifmr);
 	value = aqc_hw_read(softc, AQC_REG_TX_PACKET_BUFFER_CONTROL_1);
 	value |= AQC_TX_PACKET_BUFFER_TX_BUF_EN;
 	aqc_hw_write(softc, AQC_REG_TX_PACKET_BUFFER_CONTROL_1, value);
 
-	value = aqc_hw_read(softc, AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(0));
-	value |= AQC_TX_DMA_DESCRIPTOR_EN;
-	aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(0), value);
+	for (i = 0; i < softc->scctx->isc_ntxqsets; i++) {
+		value = aqc_hw_read(softc,
+		    AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(i));
+		value |= AQC_TX_DMA_DESCRIPTOR_EN;
+		aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(i),
+		    value);
+	}
 }
 
 static void
 aqc_if_stop(if_ctx_t ctx)
 {
+	struct aqc_softc *softc;
+	int i;
+	uint32_t value;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	softc = iflib_get_softc(ctx);
+
+	for (i = 0; i < softc->scctx->isc_ntxqsets; i++) {
+		value = aqc_hw_read(softc,
+		    AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(i));
+		value &= ~AQC_TX_DMA_DESCRIPTOR_EN;
+		aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(i),
+		    value);
+	}
 }
 
 static void
@@ -792,7 +831,6 @@ static int
 aqc_if_tx_queue_intr_enable(if_ctx_t ctx, uint16_t txqid)
 {
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
 	return (0);
 }
 
