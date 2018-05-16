@@ -548,11 +548,21 @@ aqc_if_attach_post(if_ctx_t ctx)
 	aqc_hw_write(softc, AQC_REG_TX_PACKET_BUFFER_2(0), value);
 
 	/* XXX RX qos */
+	value = AQC_RXBUF_MAX << AQC_RX_PACKET_BUFFER_SIZE_SHIFT;
+	aqc_hw_write(softc, AQC_REG_TX_PACKET_BUFFER_1(0), value);
+
+	value = ((AQC_RXBUF_MAX * (1024 / 32) * 66) / 100) <<
+	    AQC_RX_PACKET_BUFFER_HI_THRESH_SHIFT;
+	value |= ((AQC_RXBUF_MAX * (1024 / 32) * 50) / 100) <<
+	    AQC_RX_PACKET_BUFFER_LO_THRESH_SHIFT;
+	/* XXX flow control configuration */
+	value |= AQC_RX_PACKET_BUFFER_XOFF_EN;
+	aqc_hw_write(softc, AQC_REG_RX_PACKET_BUFFER_2(0), value);
+
+	aqc_hw_write(softc, AQC_REG_RX_FILTER_TC_USER_PRIORITY, 0);
 
 	/* XXX rss */
 	/* XXX rss hash */
-
-	aqc_hw_update_stats(softc);
 
 	value = aqc_hw_read(softc, AQC_REG_PCIE_CONTROL_6);
 	value &= ~(
@@ -567,10 +577,37 @@ aqc_if_attach_post(if_ctx_t ctx)
 
 	aqc_hw_write(softc, AQC_TX_DMA_TOTAL_REQUEST_LIMIT, 24);
 
-	/* XXX interrupt global control */
-	/* XXX interrupt auto mask */
+	aqc_hw_update_stats(softc);
 
-	/* XXX interrupt irq map */
+	value = AQC_REG_INTR_RESET_DSBL;
+	switch (softc->scctx->isc_intr) {
+	case IFLIB_INTR_LEGACY:
+		value |= AQC_REG_INTR_MODE_LEGACY | AQC_REG_INTR_ISR_COR_EN;
+		break;
+
+	case IFLIB_INTR_MSI:
+		value |= AQC_REG_INTR_MODE_MSI;
+		if (softc->scctx->isc_vectors > 1)
+			value |= AQC_REG_INTR_MULT_VEC_EN;
+		break;
+
+	case IFLIB_INTR_MSIX:
+		value |= AQC_REG_INTR_MODE_MSIX;
+		if (softc->scctx->isc_vectors > 1)
+			value |= AQC_REG_INTR_MULT_VEC_EN;
+		break;
+
+	default:
+		device_printf(softc->dev, "unknown interrupt mode\n");
+		return (EOPNOTSUPP);
+	}
+	aqc_hw_write(softc, AQC_REG_INTR_GLOBAL_CONTROL, value);
+
+	aqc_hw_write(softc, AQC_REG_INTR_AUTO_MASK, 0xffffffff);
+
+	value = AQC_INTR_MAP_PCI_EN | (8 << AQC_INTR_MAP_PCI_SHIFT);
+	value |= AQC_INTR_MAP_FATAL_EN | (8 << AQC_INTR_MAP_FATAL_SHIFT);
+	aqc_hw_write(softc, AQC_REG_INTR_GENERAL_MAP_1, value);
 
 	/* XXX hardware offload */
 
@@ -715,6 +752,7 @@ aqc_if_init(if_ctx_t ctx)
 	softc = iflib_get_softc(ctx);
 
 	aqc_if_media_status(ctx, &ifmr);
+
 	value = aqc_hw_read(softc, AQC_REG_TX_PACKET_BUFFER_CONTROL_1);
 	value |= AQC_TX_PACKET_BUFFER_TX_BUF_EN;
 	aqc_hw_write(softc, AQC_REG_TX_PACKET_BUFFER_CONTROL_1, value);
@@ -724,6 +762,18 @@ aqc_if_init(if_ctx_t ctx)
 		    AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(i));
 		value |= AQC_TX_DMA_DESCRIPTOR_EN;
 		aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(i),
+		    value);
+	}
+
+	value = aqc_hw_read(softc, AQC_REG_RX_PACKET_BUFFER_CONTROL_1);
+	value |= AQC_RX_PACKET_BUFFER_TX_BUF_EN;
+	aqc_hw_write(softc, AQC_REG_RX_PACKET_BUFFER_CONTROL_1, value);
+
+	for (i = 0; i < softc->scctx->isc_nrxqsets; i++) {
+		value = aqc_hw_read(softc,
+		    AQC_REG_RX_DMA_DESCRIPTOR_CONTROL(i));
+		value |= AQC_RX_DMA_DESCRIPTOR_EN;
+		aqc_hw_write(softc, AQC_REG_RX_DMA_DESCRIPTOR_CONTROL(i),
 		    value);
 	}
 }
@@ -744,6 +794,22 @@ aqc_if_stop(if_ctx_t ctx)
 		aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(i),
 		    value);
 	}
+
+	value = aqc_hw_read(softc, AQC_REG_TX_PACKET_BUFFER_CONTROL_1);
+	value &= ~AQC_TX_PACKET_BUFFER_TX_BUF_EN;
+	aqc_hw_write(softc, AQC_REG_TX_PACKET_BUFFER_CONTROL_1, value);
+
+	for (i = 0; i < softc->scctx->isc_nrxqsets; i++) {
+		value = aqc_hw_read(softc,
+		    AQC_REG_RX_DMA_DESCRIPTOR_CONTROL(i));
+		value &= ~AQC_RX_DMA_DESCRIPTOR_EN;
+		aqc_hw_write(softc, AQC_REG_RX_DMA_DESCRIPTOR_CONTROL(i),
+		    value);
+	}
+
+	value = aqc_hw_read(softc, AQC_REG_RX_PACKET_BUFFER_CONTROL_1);
+	value &= ~AQC_RX_PACKET_BUFFER_TX_BUF_EN;
+	aqc_hw_write(softc, AQC_REG_RX_PACKET_BUFFER_CONTROL_1, value);
 }
 
 static void
@@ -756,8 +822,27 @@ aqc_if_multi_set(if_ctx_t ctx)
 static int
 aqc_if_mtu_set(if_ctx_t ctx, uint32_t mtu)
 {
+	uint16_t max_frame_size;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	if (mtu > AQC_MAX_FRAME_SIZE - ETHER_HDR_LEN - ETHER_CRC_LEN) {
+		return (EINVAL);
+	}
+
+	max_frame_size = mtu + ETHER_HDR_LEN + ETHER_CRC_LEN;
+
+	/* We can only size buffers in units of 1KB so round up if needed. */
+	if (max_frame_size % 1024 != 0) {
+		max_frame_size >>= 10;
+		max_frame_size <<= 10;
+		max_frame_size++;
+	}
+
+	if (max_frame_size >
+	    AQC_MAX_FRAME_SIZE - ETHER_HDR_LEN - ETHER_CRC_LEN) {
+		return (EINVAL);
+	}
+
+	scctx->isc_max_frame_size = max_frame_size;
 	return (0);
 }
 

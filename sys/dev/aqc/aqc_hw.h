@@ -49,6 +49,9 @@
 #define	AQC_RX_RING_COUNT	4
 
 #define	AQC_TXBUF_MAX		160
+#define	AQC_RXBUF_MAX		320
+
+#define	AQC_MAX_FRAME_SIZE	16384
 
 struct aqc_ring;
 struct aqc_softc;

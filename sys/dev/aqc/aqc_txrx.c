@@ -273,10 +273,22 @@ aqc_isc_rxd_refill(void *arg, if_rxd_update_t iru)
 	struct aqc_softc *softc;
 	struct aqc_ring *ring;
 	qidx_t i, pidx;
+	uint32_t buf_size;
 
 	softc = arg;
 	ring = &softc->rx_ring[iru->iru_qsidx];
 	pidx = iru->iru_pidx;
+
+	/* Check if we need to change our ring buffer size. */
+	buf_size = aqc_hw_read(softc,
+	    AQC_REG_RX_DMA_DESCRIPTOR_BUFFER_SIZE(iru->iru_qsidx));
+	buf_size &= AQC_RX_DMA_DESCRIPTOR_DATA_SIZE_MASK;
+	if ((iru->iru_buf_size >> 10) != buf_size) {
+		buf_size = iru->iru_buf_size >> 10;
+		aqc_hw_write(softc,
+		    AQC_REG_RX_DMA_DESCRIPTOR_BUFFER_SIZE(iru->iru_qsidx),
+		    buf_size);
+	}
 
 	for (i = 0; i < iru->iru_count; i++) {
 		aqc_rx_desc(&ring->descriptors[pidx], iru->iru_paddrs[i]);
