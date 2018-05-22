@@ -243,6 +243,7 @@ aqc_isc_txd_credits_update(void *arg, uint16_t txqid, bool clear)
 	avail = 0;
 
 	head = aqc_hw_read(softc, AQC_REG_TX_DMA_DESCRIPTOR_HEAD_IDX(txqid));
+	head &= AQC_REG_TX_DMA_DESCRIPTOR_HEAD_HEAD_MASK;
 	tail = aqc_hw_read(softc, AQC_REG_TX_DMA_DESCRIPTOR_TAIL_IDX(txqid));
 
 	if (head == tail) {
@@ -321,6 +322,7 @@ aqc_isc_rxd_available(void *arg, uint16_t rxqid, qidx_t idx, qidx_t budget)
 	ring = &softc->rx_ring[rxqid];
 
 	head = aqc_hw_read(softc, AQC_REG_RX_DMA_DESCRIPTOR_HEAD_IDX(rxqid));
+	head &= AQC_REG_RX_DMA_DESCRIPTOR_HEAD_HEAD_MASK;
 	tail = aqc_hw_read(softc, AQC_REG_RX_DMA_DESCRIPTOR_TAIL_IDX(rxqid));
 
 	if (head == tail) {
