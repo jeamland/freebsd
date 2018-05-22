@@ -622,6 +622,8 @@ aqc_if_detach(if_ctx_t ctx)
 
 	softc = iflib_get_softc(ctx);
 
+	aqc_hw_write(softc, AQC_REG_MPI_CONTROL, AQC_MPI_DEINIT);
+
 	for (i = 0; i < softc->scctx->isc_nrxqsets; i++)
 		iflib_irq_free(ctx, &softc->rx_ring[i].irq);
 
@@ -968,15 +970,15 @@ static void
 aqc_if_enable_intr(if_ctx_t ctx)
 {
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	aqc_hw_write(iflib_get_softc(ctx), AQC_REG_INTR_MASK_SET, 0x1ff);
 }
 
 static void
 aqc_if_disable_intr(if_ctx_t ctx)
 {
 
-	aqc_hw_write(iflib_get_softc(ctx), AQC_REG_INTR_MASK_CLEAR,
-	    0xffffffff);
+	aqc_hw_write(iflib_get_softc(ctx), AQC_REG_INTR_MASK_CLEAR, 0x1ff);
+	aqc_hw_write(iflib_get_softc(ctx), AQC_REG_INTR_STATUS_CLEAR, 0x1ff);
 }
 
 static int
@@ -1082,5 +1084,6 @@ static int
 aqc_handle_rx(void *arg __unused)
 {
 
+	printf("beep\n");
 	return (FILTER_SCHEDULE_THREAD);
 }
