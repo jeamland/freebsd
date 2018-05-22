@@ -766,7 +766,7 @@ aqc_if_init(if_ctx_t ctx)
 	}
 
 	value = aqc_hw_read(softc, AQC_REG_RX_PACKET_BUFFER_CONTROL_1);
-	value |= AQC_RX_PACKET_BUFFER_TX_BUF_EN;
+	value |= AQC_RX_PACKET_BUFFER_RX_BUF_EN;
 	aqc_hw_write(softc, AQC_REG_RX_PACKET_BUFFER_CONTROL_1, value);
 
 	for (i = 0; i < softc->scctx->isc_nrxqsets; i++) {
@@ -808,7 +808,7 @@ aqc_if_stop(if_ctx_t ctx)
 	}
 
 	value = aqc_hw_read(softc, AQC_REG_RX_PACKET_BUFFER_CONTROL_1);
-	value &= ~AQC_RX_PACKET_BUFFER_TX_BUF_EN;
+	value &= ~AQC_RX_PACKET_BUFFER_RX_BUF_EN;
 	aqc_hw_write(softc, AQC_REG_RX_PACKET_BUFFER_CONTROL_1, value);
 }
 
@@ -822,7 +822,10 @@ aqc_if_multi_set(if_ctx_t ctx)
 static int
 aqc_if_mtu_set(if_ctx_t ctx, uint32_t mtu)
 {
+	struct aqc_softc *softc;
 	uint16_t max_frame_size;
+
+	softc = iflib_get_softc(ctx);
 
 	if (mtu > AQC_MAX_FRAME_SIZE - ETHER_HDR_LEN - ETHER_CRC_LEN) {
 		return (EINVAL);
@@ -842,7 +845,7 @@ aqc_if_mtu_set(if_ctx_t ctx, uint32_t mtu)
 		return (EINVAL);
 	}
 
-	scctx->isc_max_frame_size = max_frame_size;
+	softc->scctx->isc_max_frame_size = max_frame_size;
 	return (0);
 }
 
