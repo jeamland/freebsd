@@ -779,6 +779,10 @@ aqc_if_init(if_ctx_t ctx)
 		aqc_hw_write(softc, AQC_REG_RX_DMA_DESCRIPTOR_CONTROL(i),
 		    value);
 	}
+
+	value = aqc_hw_read(softc, AQC_REG_RX_FILTER_CONTROL_1);
+	value |= AQC_RX_FILTER_BC_EN;
+	aqc_hw_write(softc, AQC_REG_RX_FILTER_CONTROL_1, value);
 }
 
 static void
