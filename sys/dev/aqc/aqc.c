@@ -963,8 +963,30 @@ aqc_if_media_change(if_ctx_t ctx)
 static int
 aqc_if_promisc_set(if_ctx_t ctx, int flags)
 {
+	struct aqc_softc *softc;
+	if_t ifp;
+	uint32_t value;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	softc = iflib_get_softc(ctx);
+	ifp = iflib_get_ifp(ctx);
+
+	value = aqc_hw_read(softc, AQC_REG_RX_FILTER_CONTROL_1);
+	if (ifp->if_flags & IFF_PROMISC) {
+		value |= AQC_RX_FILTER_L2_PROMISC_MODE;
+	} else {
+		value &= ~AQC_RX_FILTER_L2_PROMISC_MODE;
+	}
+	aqc_hw_write(softc, AQC_REG_RX_FILTER_CONTROL_1, value);
+
+	value = aqc_hw_read(softc, AQC_REG_RX_MULTICAST_FILTER_MASK);
+	if (ifp->if_flags & IFF_ALLMULTI ||
+	    if_multiaddr_count(ifp, -1) > AQC_HW_MAX_MULTICAST) {
+		value |= AQC_RX_MULTICAST_FILTER_ACCEPT_ALL;
+	} else {
+		value &= ~AQC_RX_MULTICAST_FILTER_ACCEPT_ALL;
+	}
+	aqc_hw_write(softc, AQC_REG_RX_MULTICAST_FILTER_MASK, value);
+
 	return (0);
 }
 
