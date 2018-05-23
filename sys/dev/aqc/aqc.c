@@ -440,7 +440,6 @@ aqc_if_attach_post(if_ctx_t ctx)
 	value |= AQC_TX_PACKET_BUFFER_PAD_INS_EN;
 	aqc_hw_write(softc, AQC_REG_TX_PACKET_BUFFER_CONTROL_1, value);
 
-	/* XXX init RX path */
 	value = aqc_hw_read(softc, AQC_REG_RX_PACKET_BUFFER_CONTROL_1);
 	value &= ~(AQC_RX_PACKET_BUFFER_FC_MODE_MASK <<
 	    AQC_RX_PACKET_BUFFER_FC_MODE_SHIFT);
@@ -548,7 +547,6 @@ aqc_if_attach_post(if_ctx_t ctx)
 	    AQC_TX_PACKET_BUFFER_LO_THRESH_SHIFT;
 	aqc_hw_write(softc, AQC_REG_TX_PACKET_BUFFER_2(0), value);
 
-	/* XXX RX qos */
 	value = AQC_RXBUF_MAX << AQC_RX_PACKET_BUFFER_SIZE_SHIFT;
 	aqc_hw_write(softc, AQC_REG_TX_PACKET_BUFFER_1(0), value);
 
@@ -556,7 +554,6 @@ aqc_if_attach_post(if_ctx_t ctx)
 	    AQC_RX_PACKET_BUFFER_HI_THRESH_SHIFT;
 	value |= ((AQC_RXBUF_MAX * (1024 / 32) * 50) / 100) <<
 	    AQC_RX_PACKET_BUFFER_LO_THRESH_SHIFT;
-	/* XXX flow control configuration */
 	value |= AQC_RX_PACKET_BUFFER_XOFF_EN;
 	aqc_hw_write(softc, AQC_REG_RX_PACKET_BUFFER_2(0), value);
 
@@ -1075,6 +1072,7 @@ aqc_if_msix_intr_assign(if_ctx_t ctx, int msix)
 {
 	struct aqc_softc *softc;
 	int i, rc;
+	uint32_t value;
 	char irq_name[16];
 
 	softc = iflib_get_softc(ctx);
@@ -1093,6 +1091,11 @@ aqc_if_msix_intr_assign(if_ctx_t ctx, int msix)
 		}
 
 		softc->rx_ring[i].msix = i;
+
+		value = aqc_hw_read(softc, AQC_REG_RX_MAP(i));
+		value &= AQC_RX_MAP_MASK(i);
+		value |= AQC_RX_MAP_EN(i) | (i << AQC_RX_MAP_MASK(i));
+		aqc_hw_write(softc, AQC_REG_RX_MAP(i), value);
 	}
 
 	for (i = 0; i < softc->scctx->isc_ntxqsets; i++) {
@@ -1158,6 +1161,5 @@ static int
 aqc_handle_rx(void *arg __unused)
 {
 
-	printf("beep\n");
 	return (FILTER_SCHEDULE_THREAD);
 }

@@ -177,13 +177,13 @@
 #define	AQC_REG_INTR_MASK_CLEAR			0x00002070
 #define	AQC_REG_INTR_AUTO_MASK			0x00002090
 
-#define	AQC_REG_TX_MAP(x)			0x00002100 + (((x) >> 1) * 4)
-#define	AQC_TX_MAP_SHIFT(x)			0x10 + (1 - (x & 1)) * 8
+#define	AQC_REG_TX_MAP(x)			(0x00002100 + (((x) >> 1) * 4))
+#define	AQC_TX_MAP_SHIFT(x)			(0x10 + (1 - (x & 1)) * 8)
 #define	AQC_TX_MAP_EN(x)			0x1 << (AQC_TX_MAP_SHIFT(x) + 7)
 #define	AQC_TX_MAP_MASK(x)			0x1f << AQC_TX_MAP_SHIFT(x)
 
-#define	AQC_REG_RX_MAP(x)			0x00002100 + (((x) >> 1) * 4)
-#define	AQC_RX_MAP_SHIFT(x)			0x00 + (1 - (x & 1)) * 8
+#define	AQC_REG_RX_MAP(x)			(0x00002100 + (((x) >> 1) * 4))
+#define	AQC_RX_MAP_SHIFT(x)			(0x00 + (1 - (x & 1)) * 8)
 #define	AQC_RX_MAP_EN(x)			0x1 << (AQC_RX_MAP_SHIFT(x) + 7)
 #define	AQC_RX_MAP_MASK(x)			0x1f << AQC_RX_MAP_SHIFT(x)
 
