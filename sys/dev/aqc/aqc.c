@@ -49,6 +49,7 @@ __FBSDID("$FreeBSD$");
 #include <net/if.h>
 #include <net/if_media.h>
 #include <net/if_var.h>
+#include <net/if_dl.h>
 #include <net/ethernet.h>
 #include <net/iflib.h>
 
@@ -466,7 +467,7 @@ aqc_if_attach_post(if_ctx_t ctx)
 		aqc_hw_write(softc, AQC_REG_RX_UNICAST_FILTER_2(i), value);
 	}
 
-	aqc_hw_write(softc, AQC_REG_RX_MULTICAST_FILTER_MASK, 0);
+	aqc_hw_write(softc, AQC_REG_RX_MULTICAST_FILTER(0), 0);
 	value = AQC_RX_MULTICAST_FILTER_ACT_HOST;
 	value |= 0xfff;
 	aqc_hw_write(softc, AQC_REG_RX_MULTICAST_FILTER(0), value);
@@ -814,11 +815,58 @@ aqc_if_stop(if_ctx_t ctx)
 	aqc_hw_write(softc, AQC_REG_RX_PACKET_BUFFER_CONTROL_1, value);
 }
 
+static int
+aqc_add_multicast_addr(void *arg, struct ifmultiaddr *ifma, int count)
+{
+	struct aqc_softc *softc;
+	uint8_t *mca;
+	uint32_t value, f;
+
+	softc = arg;
+
+	if (ifma->ifma_addr->sa_family != AF_LINK)
+		return (0);
+	if (count >= AQC_HW_MAX_MULTICAST)
+		return (0);
+
+	mca = LLADDR((struct sockaddr_dl *)ifma->ifma_addr);
+	f = AQC_HW_MULTICAST_FILTER(count);
+	value = (mca[2] << 24) | (mca[3] << 16) | (mca[4] << 8) | (mca[5]);
+	aqc_hw_write(softc, AQC_REG_RX_UNICAST_FILTER_2(f), value);
+	value = (mca[0] << 8) | (mca[1]) | AQC_RX_UNICAST_FILTER_L2_EN |
+	    AQC_RX_UNICAST_FILTER_ACT_HOST;
+	aqc_hw_write(softc, AQC_REG_RX_UNICAST_FILTER_1(f), value);
+
+	return (1);
+}
+
 static void
 aqc_if_multi_set(if_ctx_t ctx)
 {
+	struct aqc_softc *softc;
+	if_t ifp;
+	int mcnt, i;
+	uint32_t value, f;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	softc = iflib_get_softc(ctx);
+	ifp = iflib_get_ifp(ctx);
+
+	mcnt = if_multi_apply(ifp, aqc_add_multicast_addr, softc);
+
+	value = aqc_hw_read(softc, AQC_REG_RX_MULTICAST_FILTER_MASK);
+	if (mcnt >= AQC_HW_MAX_MULTICAST) {
+		value |= AQC_RX_MULTICAST_FILTER_ACCEPT_ALL;
+	} else {
+		value &= ~AQC_RX_MULTICAST_FILTER_ACCEPT_ALL;
+	}
+	aqc_hw_write(softc, AQC_REG_RX_MULTICAST_FILTER_MASK, value);
+
+	for (i = mcnt; i < AQC_HW_MAX_MULTICAST; i++) {
+		f = AQC_HW_MULTICAST_FILTER(i);
+		value = aqc_hw_read(softc, AQC_REG_RX_UNICAST_FILTER_2(f));
+		value &= ~AQC_RX_UNICAST_FILTER_L2_EN;
+		aqc_hw_write(softc, AQC_REG_RX_UNICAST_FILTER_2(f), value);
+	}
 }
 
 static int
