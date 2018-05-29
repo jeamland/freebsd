@@ -446,16 +446,26 @@ aqc_isc_rxd_pkt_get(void *arg, if_rxd_info_t ri)
 	struct aqc_softc *softc;
 	struct aqc_ring *ring;
 	struct aqc_rx_info ari;
+	int cidx, i;
 
 	softc = arg;
 	ring = &softc->rx_ring[ri->iri_qsidx];
+	cidx = ri->iri_cidx;
+	i = 0;
 
-	aqc_rx_desc_read(&ring->descriptors[ri->iri_cidx], &ari);
+	do {
+		aqc_rx_desc_read(&ring->descriptors[cidx], &ari);
 
-	ri->iri_len += ari.pkt_len;
-	ri->iri_frags[0].irf_flid = 0;
-	ri->iri_frags[0].irf_idx = ri->iri_cidx;
-	ri->iri_frags[0].irf_len = ari.pkt_len;
+		ri->iri_len += ari.pkt_len;
+		ri->iri_frags[i].irf_flid = 0;
+		ri->iri_frags[i].irf_idx = cidx;
+		ri->iri_frags[i].irf_len = ari.pkt_len;
+
+		i++;
+		cidx++;
+		if (cidx >= ring->ndesc)
+			cidx = 0;
+	} while (!ari.eop);
 
 	ri->iri_nfrags = 1;
 
