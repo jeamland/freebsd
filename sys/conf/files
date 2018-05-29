@@ -853,6 +853,10 @@ dev/an/if_an_pccard.c		optional an pccard
 dev/an/if_an_pci.c		optional an pci
 #
 dev/aqc/aqc.c			optional aqc
+dev/aqc/aqc_fw.c		optional aqc
+dev/aqc/aqc_fw_1x.c		optional aqc
+dev/aqc/aqc_fw_2x.c		optional aqc
+dev/aqc/aqc_hw.c		optional aqc
 dev/aqc/aqc_txrx.c		optional aqc
 #
 dev/ata/ata_if.m		optional ata | atacore
