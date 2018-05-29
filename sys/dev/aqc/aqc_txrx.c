@@ -151,12 +151,100 @@ aqc_tx_desc_context(struct aqc_desc *desc, int mss_len, int l4_len, int l3_len,
 	    (AQC_DESC_TX_DES_TYP_CONTEXT << AQC_DESC_TX_CTX_DES_TYP_SHIFT);
 }
 
+#define	AQC_RX_RSS_HASH_SHIFT		0x20
+#define	AQC_RX_RSS_HASH_MASK		0xffffffff
+#define	AQC_RX_HDR_LEN_SHIFT		0x16
+#define	AQC_RX_HDR_LEN_MASK		0x3ff
+#define	AQC_RX_SPH_MASK			0x00200000
+#define	AQC_RX_RX_CNTL_SHIFT		0x13
+#define	AQC_RX_RX_CNTL_MASK		0x3
+#define	AQC_RX_RDM_ERR_MASK		0x00001000
+#define	AQC_RX_PKT_TYPE_SHIFT		0x04
+#define	AQC_RX_PKT_TYPE_MASK		0xff
+#define	AQC_RX_RSS_TYPE_SHIFT		0x00
+#define	AQC_RX_RSS_TYPE_MASK		0xf
+#define	AQC_RX_VLAN_TAG_SHIFT		0x30
+#define	AQC_RX_VLAN_TAG_MASK		0xffff
+#define	AQC_RX_NEXT_DESP_SHIFT		0x20
+#define	AQC_RX_NEXT_DESP_MASK		0xffff
+#define	AQC_RX_PKT_LEN_SHIFT		0x10
+#define	AQC_RX_PKT_LEN_MASK		0xffff
+#define	AQC_RX_RSC_CNT_SHIFT		0x0c
+#define	AQC_RX_RSC_CNT_MASK		0xf
+#define	AQC_RX_RX_E_STAT_SHIFT		0x06
+#define	AQC_RX_RX_E_STAT_MASK		0x3f
+#define	AQC_RX_RX_STAT_SHIFT		0x02
+#define	AQC_RX_RX_STAT_MASK		0xf
+#define	AQC_RX_EOP_MASK			0x00000002
+#define	AQC_RX_DD_MASK			0x00000001
+
+struct aqc_rx_info {
+	uint32_t	rss_hash;
+	size_t		hdr_len;
+	bool		sph;
+	uint8_t		rx_cntl;
+	bool		rdm_err;
+	uint8_t		pkt_type;
+	uint8_t		rss_type;
+	uint16_t	vlan_tag;
+	uint16_t	next_desp;
+	size_t		pkt_len;
+	uint8_t		rsc_cnt;
+	uint8_t		rx_e_stat;
+	uint8_t		rx_stat;
+	bool		eop;
+};
+
 static inline void
-aqc_rx_desc(struct aqc_desc *desc, bus_addr_t data_buf_addr)
+aqc_rx_desc_init(struct aqc_desc *desc, bus_addr_t data_buf_addr)
 {
 
 	desc->field1 = (uint64_t)data_buf_addr;
 	desc->field2 = 0;
+}
+
+static inline bool
+aqc_rx_desc_done(struct aqc_desc *desc)
+{
+
+	return (desc->field2 & AQC_RX_DD_MASK);
+}
+
+
+static inline void
+aqc_rx_desc_read(struct aqc_desc *desc, struct aqc_rx_info *ri)
+{
+
+#define	_BITFIELD(src, shift, mask)	(((src) >> (shift)) & (mask))
+#define	_BOOL(src, mask)		((src) & (mask))
+	ri->rss_hash = _BITFIELD(desc->field1, AQC_RX_RSS_HASH_SHIFT,
+	    AQC_RX_RSS_HASH_MASK);
+	ri->hdr_len = _BITFIELD(desc->field1, AQC_RX_HDR_LEN_SHIFT,
+	    AQC_RX_HDR_LEN_MASK);
+	ri->sph = _BOOL(desc->field1, AQC_RX_SPH_MASK);
+	ri->rx_cntl = _BITFIELD(desc->field1, AQC_RX_RX_CNTL_SHIFT,
+	    AQC_RX_RX_CNTL_MASK);
+	ri->rdm_err = _BOOL(desc->field1, AQC_RX_RDM_ERR_MASK);
+	ri->pkt_type = _BITFIELD(desc->field1, AQC_RX_PKT_TYPE_SHIFT,
+	    AQC_RX_PKT_TYPE_MASK);
+	ri->rss_type = _BITFIELD(desc->field1, AQC_RX_RSS_TYPE_SHIFT,
+	    AQC_RX_RSS_TYPE_MASK);
+
+	ri->vlan_tag = _BITFIELD(desc->field2, AQC_RX_VLAN_TAG_SHIFT,
+	    AQC_RX_VLAN_TAG_MASK);
+	ri->next_desp = _BITFIELD(desc->field2, AQC_RX_NEXT_DESP_SHIFT,
+	    AQC_RX_NEXT_DESP_MASK);
+	ri->pkt_len = _BITFIELD(desc->field2, AQC_RX_PKT_LEN_SHIFT,
+	    AQC_RX_PKT_LEN_MASK);
+	ri->rsc_cnt = _BITFIELD(desc->field2, AQC_RX_RSC_CNT_SHIFT,
+	    AQC_RX_RSC_CNT_MASK);
+	ri->rx_e_stat = _BITFIELD(desc->field2, AQC_RX_RX_E_STAT_SHIFT,
+	    AQC_RX_RX_E_STAT_MASK);
+	ri->rx_e_stat = _BITFIELD(desc->field2, AQC_RX_RX_STAT_SHIFT,
+	    AQC_RX_RX_STAT_MASK);
+	ri->eop = _BOOL(desc->field2, AQC_RX_EOP_MASK);
+#undef	_BITFIELD
+#undef	_BOOL
 }
 
 /* iflib txrx interface prototypes */
@@ -301,7 +389,7 @@ aqc_isc_rxd_refill(void *arg, if_rxd_update_t iru)
 	}
 
 	for (i = 0; i < iru->iru_count; i++) {
-		aqc_rx_desc(&ring->descriptors[pidx], iru->iru_paddrs[i]);
+		aqc_rx_desc_init(&ring->descriptors[pidx], iru->iru_paddrs[i]);
 
 		pidx++;
 		if (pidx >= ring->ndesc)
@@ -325,29 +413,51 @@ aqc_isc_rxd_available(void *arg, uint16_t rxqid, qidx_t idx, qidx_t budget)
 {
 	struct aqc_softc *softc;
 	struct aqc_ring *ring;
-	uint32_t head, tail;
+	struct aqc_rx_info ari;
+	int cnt, i, iter;
 
 	softc = arg;
 	ring = &softc->rx_ring[rxqid];
 
-	head = aqc_hw_read(softc, AQC_REG_RX_DMA_DESCRIPTOR_HEAD_IDX(rxqid));
-	head &= AQC_REG_RX_DMA_DESCRIPTOR_HEAD_HEAD_MASK;
-	tail = aqc_hw_read(softc, AQC_REG_RX_DMA_DESCRIPTOR_TAIL_IDX(rxqid));
-
-	if (head == tail) {
-		return (ring->ndesc);
-	} else if (head > tail) {
-		tail += ring->ndesc;
+	if (budget == 1 && aqc_rx_desc_done(&ring->descriptors[idx])) {
+		return (1);
 	}
 
-	return (tail - head);
+	for (iter = cnt = 0, i = idx; iter < ring->ndesc && iter <= budget;) {
+		if (!aqc_rx_desc_done(&ring->descriptors[i]))
+			break;
+
+		if (++i == ring->ndesc) {
+			i = 0;
+		}
+
+		aqc_rx_desc_read(&ring->descriptors[i], &ari);
+
+		if (ari.eop)
+			cnt++;
+		iter++;
+	}
+	return (cnt);
 }
 
 static int
 aqc_isc_rxd_pkt_get(void *arg, if_rxd_info_t ri)
 {
+	struct aqc_softc *softc;
+	struct aqc_ring *ring;
+	struct aqc_rx_info ari;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
-	return (EIO);
+	softc = arg;
+	ring = &softc->rx_ring[ri->iri_qsidx];
+
+	aqc_rx_desc_read(&ring->descriptors[ri->iri_cidx], &ari);
+
+	ri->iri_len += ari.pkt_len;
+	ri->iri_frags[0].irf_flid = 0;
+	ri->iri_frags[0].irf_idx = ri->iri_cidx;
+	ri->iri_frags[0].irf_len = ari.pkt_len;
+
+	ri->iri_nfrags = 1;
+
+	return (0);
 }
-
