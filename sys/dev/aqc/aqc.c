@@ -1042,6 +1042,7 @@ aqc_if_enable_intr(if_ctx_t ctx)
 {
 
 	aqc_hw_write(iflib_get_softc(ctx), AQC_REG_INTR_MASK_SET, 0x1ff);
+	aqc_hw_write(iflib_get_softc(ctx), AQC_REG_INTR_STATUS_CLEAR, 0x1ff);
 }
 
 static void
@@ -1055,8 +1056,11 @@ aqc_if_disable_intr(if_ctx_t ctx)
 static int
 aqc_if_rx_queue_intr_enable(if_ctx_t ctx, uint16_t rxqid)
 {
+	struct aqc_softc *softc;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	softc = iflib_get_softc(ctx);
+	aqc_hw_write(softc, AQC_REG_INTR_STATUS_CLEAR, 1 << rxqid);
+
 	return (0);
 }
 
