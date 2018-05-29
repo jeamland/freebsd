@@ -677,7 +677,7 @@ aqc_if_tx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs,
 		aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_BASE_LSW(i),
 		    paddrs[i] & 0xffffffff);
 		aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_BASE_MSW(i),
-		    (paddrs[i] & 0xffffffff00000000) >> 32);
+		    (paddrs[i] >> 32) & 0xffffffff);
 
 		value = aqc_hw_read(softc,
 		    AQC_REG_TX_DMA_DESCRIPTOR_CONTROL(i));
@@ -718,7 +718,7 @@ aqc_if_rx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs,
 		aqc_hw_write(softc, AQC_REG_RX_DMA_DESCRIPTOR_BASE_LSW(i),
 		    paddrs[i] & 0xffffffff);
 		aqc_hw_write(softc, AQC_REG_RX_DMA_DESCRIPTOR_BASE_MSW(i),
-		    (paddrs[i] & 0xffffffff00000000) >> 32);
+		    (paddrs[i] >> 32) & 0xffffffff);
 
 		value = aqc_hw_read(softc,
 		    AQC_REG_RX_DMA_DESCRIPTOR_CONTROL(i));
