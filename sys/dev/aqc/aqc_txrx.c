@@ -237,6 +237,7 @@ aqc_isc_txd_credits_update(void *arg, uint16_t txqid, bool clear)
 	qidx_t pidx;
 	uint32_t head, tail;
 	int avail;
+	uint64_t counter;
 
 	softc = arg;
 	ring = &softc->tx_ring[txqid];
@@ -245,6 +246,9 @@ aqc_isc_txd_credits_update(void *arg, uint16_t txqid, bool clear)
 	head = aqc_hw_read(softc, AQC_REG_TX_DMA_DESCRIPTOR_HEAD_IDX(txqid));
 	head &= AQC_REG_TX_DMA_DESCRIPTOR_HEAD_HEAD_MASK;
 	tail = aqc_hw_read(softc, AQC_REG_TX_DMA_DESCRIPTOR_TAIL_IDX(txqid));
+	/* XXX: debugging for an odd case where we get a weird head value */
+	if (head >= ring->ndesc)
+		device_printf(softc->dev, "head=%d tail=%d\n", head, tail);
 
 	if (head == tail) {
 		avail = ring->ndesc;
@@ -252,6 +256,7 @@ aqc_isc_txd_credits_update(void *arg, uint16_t txqid, bool clear)
 	}
 
 	pidx = tail;
+	counter = 0;	/* XXX: workaround for issue mentioned above. */
 	do {
 		if (aqc_tx_desc_done(&ring->descriptors[pidx])) {
 			avail++;
@@ -262,6 +267,10 @@ aqc_isc_txd_credits_update(void *arg, uint16_t txqid, bool clear)
 		pidx++;
 		if (pidx >= ring->ndesc)
 			pidx = 0;
+
+		/* XXX: workaround, see above. */
+		if (counter++ > 256)
+			break;
 	} while (pidx != head);
 
 done:
