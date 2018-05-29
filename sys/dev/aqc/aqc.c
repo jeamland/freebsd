@@ -548,7 +548,7 @@ aqc_if_attach_post(if_ctx_t ctx)
 	aqc_hw_write(softc, AQC_REG_TX_PACKET_BUFFER_2(0), value);
 
 	value = AQC_RXBUF_MAX << AQC_RX_PACKET_BUFFER_SIZE_SHIFT;
-	aqc_hw_write(softc, AQC_REG_TX_PACKET_BUFFER_1(0), value);
+	aqc_hw_write(softc, AQC_REG_RX_PACKET_BUFFER_1(0), value);
 
 	value = ((AQC_RXBUF_MAX * (1024 / 32) * 66) / 100) <<
 	    AQC_RX_PACKET_BUFFER_HI_THRESH_SHIFT;
