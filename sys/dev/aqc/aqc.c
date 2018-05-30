@@ -419,9 +419,7 @@ aqc_if_attach_post(if_ctx_t ctx)
 
 	/* XXX TSO flags */
 
-	value = aqc_hw_read(softc, AQC_REG_TX_INTERRUPT_CONTROL);
-	value |= AQC_TX_INTERRUPT_CONTROL_DESC_WRB_EN;
-	aqc_hw_write(softc, AQC_REG_TX_INTERRUPT_CONTROL, value);
+	aqc_hw_write(softc, AQC_REG_TX_INTERRUPT_CONTROL, 0);
 
 	if (AQC_HW_FEATURE(softc, AQC_HW_FEATURE_TPO2)) {
 		aqc_hw_write(softc, AQC_REG_TX_SPARE_CONTROL_DEBUG,
@@ -479,9 +477,8 @@ aqc_if_attach_post(if_ctx_t ctx)
 	value |= AQC_RX_VLAN_PROMISC_MODE;
 	aqc_hw_write(softc, AQC_REG_RX_VLAN_CONTROL_1, value);
 
-	value = aqc_hw_read(softc, AQC_REG_RX_INTERRUPT_CONTROL);
-	value |= AQC_RX_INTERRUPT_CONTROL_DESC_WRB_EN;
-	aqc_hw_write(softc, AQC_REG_RX_INTERRUPT_CONTROL, value);
+	aqc_hw_write(softc, AQC_REG_RX_INTERRUPT_CONTROL,
+	    AQC_RX_INTERRUPT_CONTROL_DESC_WRB_EN);
 
 	if (AQC_HW_FEATURE(softc, AQC_HW_FEATURE_RPF2)) {
 		aqc_hw_write(softc, AQC_REG_RX_SPARE_CONTROL_DEBUG,
