@@ -1093,8 +1093,8 @@ aqc_if_msix_intr_assign(if_ctx_t ctx, int msix)
 		softc->rx_ring[i].msix = i;
 
 		value = aqc_hw_read(softc, AQC_REG_RX_MAP(i));
-		value &= AQC_RX_MAP_MASK(i);
-		value |= AQC_RX_MAP_EN(i) | (i << AQC_RX_MAP_MASK(i));
+		value &= ~AQC_RX_MAP_MASK(i);
+		value |= AQC_RX_MAP_EN(i) | (i << AQC_RX_MAP_SHIFT(i));
 		aqc_hw_write(softc, AQC_REG_RX_MAP(i), value);
 	}
 
