@@ -467,7 +467,7 @@ aqc_isc_rxd_pkt_get(void *arg, if_rxd_info_t ri)
 			cidx = 0;
 	} while (!ari.eop);
 
-	ri->iri_nfrags = 1;
+	ri->iri_nfrags = i;
 
 	return (0);
 }
