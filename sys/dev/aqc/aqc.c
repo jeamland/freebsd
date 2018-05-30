@@ -1081,8 +1081,7 @@ aqc_if_msix_intr_assign(if_ctx_t ctx, int msix)
 	for (i = 0; i < softc->scctx->isc_nrxqsets; i++) {
 		snprintf(irq_name, sizeof(irq_name), "rxq%d", i);
 		rc = iflib_irq_alloc_generic(ctx, &softc->rx_ring[i].irq,
-		    i + 1, IFLIB_INTR_RX, aqc_handle_rx, &softc->rx_ring[i],
-		    i, irq_name);
+		    i + 1, IFLIB_INTR_RX, aqc_handle_rx, NULL, i, irq_name);
 
 		if (rc) {
 			device_printf(softc->dev,
