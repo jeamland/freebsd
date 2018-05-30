@@ -418,16 +418,16 @@ aqc_isc_rxd_available(void *arg, uint16_t rxqid, qidx_t idx, qidx_t budget)
 		if (!aqc_rx_desc_done(&ring->descriptors[i]))
 			break;
 
-		if (++i == ring->ndesc) {
-			i = 0;
-		}
-
 		aqc_rx_desc_read(&ring->descriptors[i], &ari);
 
 		if (ari.eop)
 			cnt++;
 		iter++;
+		if (++i == ring->ndesc) {
+			i = 0;
+		}
 	}
+
 	return (cnt);
 }
 
