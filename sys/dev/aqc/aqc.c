@@ -669,7 +669,7 @@ aqc_if_tx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs,
 		ring = &softc->tx_ring[i];
 
 		ring->descriptors = (struct aqc_desc *)vaddrs[i];
-		ring->ndesc = softc->scctx->isc_ntxd[i];
+		ring->ndesc = softc->scctx->isc_ntxd[0];
 
 		aqc_hw_write(softc, AQC_REG_TX_DMA_DESCRIPTOR_BASE_LSW(i),
 		    paddrs[i] & 0xffffffff);
@@ -710,7 +710,7 @@ aqc_if_rx_queues_alloc(if_ctx_t ctx, caddr_t *vaddrs,
 		ring = &softc->rx_ring[i];
 
 		ring->descriptors = (struct aqc_desc *)vaddrs[i];
-		ring->ndesc = softc->scctx->isc_nrxd[i];
+		ring->ndesc = softc->scctx->isc_nrxd[0];
 
 		aqc_hw_write(softc, AQC_REG_RX_DMA_DESCRIPTOR_BASE_LSW(i),
 		    paddrs[i] & 0xffffffff);
