@@ -336,7 +336,7 @@ aqc_isc_txd_credits_update(void *arg, uint16_t txqid, bool clear)
 	tail = aqc_hw_read(softc, AQC_REG_TX_DMA_DESCRIPTOR_TAIL_IDX(txqid));
 	/* XXX: debugging for an odd case where we get a weird head value */
 	if (head >= ring->ndesc)
-		device_printf(softc->dev, "head=%d tail=%d\n", head, tail);
+		device_printf(softc->dev, "ring=%d head=%d tail=%d ndesc=%d\n", txqid, head, tail, ring->ndesc);
 
 	if (head == tail) {
 		avail = ring->ndesc;
