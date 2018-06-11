@@ -156,8 +156,8 @@ aqc_tx_desc_context(struct aqc_desc *desc, int mss_len, int l4_len, int l3_len,
 #define	AQC_RX_HDR_LEN_SHIFT		0x16
 #define	AQC_RX_HDR_LEN_MASK		0x3ff
 #define	AQC_RX_SPH_MASK			0x00200000
-#define	AQC_RX_RX_CNTL_SHIFT		0x13
-#define	AQC_RX_RX_CNTL_MASK		0x3
+#define	AQC_RX_CNTL_SHIFT		0x13
+#define	AQC_RX_CNTL_MASK		0x3
 #define	AQC_RX_RDM_ERR_MASK		0x00001000
 #define	AQC_RX_PKT_TYPE_SHIFT		0x04
 #define	AQC_RX_PKT_TYPE_MASK		0xff
@@ -171,10 +171,10 @@ aqc_tx_desc_context(struct aqc_desc *desc, int mss_len, int l4_len, int l3_len,
 #define	AQC_RX_PKT_LEN_MASK		0xffff
 #define	AQC_RX_RSC_CNT_SHIFT		0x0c
 #define	AQC_RX_RSC_CNT_MASK		0xf
-#define	AQC_RX_RX_E_STAT_SHIFT		0x06
-#define	AQC_RX_RX_E_STAT_MASK		0x3f
-#define	AQC_RX_RX_STAT_SHIFT		0x02
-#define	AQC_RX_RX_STAT_MASK		0xf
+#define	AQC_RX_E_STAT_SHIFT		0x06
+#define	AQC_RX_E_STAT_MASK		0x3f
+#define	AQC_RX_STAT_SHIFT		0x02
+#define	AQC_RX_STAT_MASK		0xf
 #define	AQC_RX_EOP_MASK			0x00000002
 #define	AQC_RX_DD_MASK			0x00000001
 
@@ -183,15 +183,40 @@ struct aqc_rx_info {
 	size_t		hdr_len;
 	bool		sph;
 	uint8_t		rx_cntl;
+#define	AQC_RX_CNTL_IPV4_CSUM_EN	0x01
+#define	AQC_RX_CNTL_TCP_UDP_CSUM_EN	0x02
 	bool		rdm_err;
 	uint8_t		pkt_type;
+#define	AQC_RX_PKT_TYPE_LOWER_MASK	0x03
+#define	AQC_RX_PKT_TYPE_LOWER_SHIFT	0x00
+#define	AQC_RX_PKT_TYPE_LOWER_IPV4	(0x0 << AQC_RX_PKT_TYPE_LOWER_SHIFT)
+#define	AQC_RX_PKT_TYPE_LOWER_IPV6	(0x1 << AQC_RX_PKT_TYPE_LOWER_SHIFT)
+#define	AQC_RX_PKT_TYPE_LOWER_L2	(0x2 << AQC_RX_PKT_TYPE_LOWER_SHIFT)
+#define	AQC_RX_PKT_TYPE_LOWER_ARP	(0x3 << AQC_RX_PKT_TYPE_LOWER_SHIFT)
+#define	AQC_RX_PKT_TYPE_UPPER_MASK	0x1c
+#define	AQC_RX_PKT_TYPE_UPPER_SHIFT	0x02
+#define	AQC_RX_PKT_TYPE_UPPER_TCP	(0x0 << AQC_RX_PKT_TYPE_UPPER_SHIFT)
+#define	AQC_RX_PKT_TYPE_UPPER_UDP	(0x1 << AQC_RX_PKT_TYPE_UPPER_SHIFT)
+#define	AQC_RX_PKT_TYPE_UPPER_SCTP	(0x2 << AQC_RX_PKT_TYPE_UPPER_SHIFT)
+#define	AQC_RX_PKT_TYPE_UPPER_ICMP	(0x3 << AQC_RX_PKT_TYPE_UPPER_SHIFT)
+#define	AQC_RX_PKT_TYPE_VLAN_MASK	0x60
+#define	AQC_RX_PKT_TYPE_VLAN_SHIFT	0x05
+#define	AQC_RX_PKT_TYPE_VLAN_NONE	(0x0 << AQC_RX_PKT_TYPE_VLAN_SHIFT)
+#define	AQC_RX_PKT_TYPE_VLAN_TAGGED	(0x1 << AQC_RX_PKT_TYPE_VLAN_SHIFT)
+#define	AQC_RX_PKT_TYPE_VLAN_2TAGGED	(0x2 << AQC_RX_PKT_TYPE_VLAN_SHIFT)
 	uint8_t		rss_type;
 	uint16_t	vlan_tag;
 	uint16_t	next_desp;
 	size_t		pkt_len;
 	uint8_t		rsc_cnt;
 	uint8_t		rx_e_stat;
+#define	AQC_RX_E_STAT_VLAN_STRIPPED	0x1
+#define	AQC_RX_E_STAT_L2_UCAST_MATCH	0x2
 	uint8_t		rx_stat;
+#define	AQC_RX_STAT_MAC_ERROR		0x1
+#define	AQC_RX_STAT_IPV4_CSUM_ERROR	0x2
+#define	AQC_RX_STAT_L4_CSUM_ERROR	0x4
+#define	AQC_RX_STAT_L4_CSUM_VALID	0x8
 	bool		eop;
 };
 
@@ -222,8 +247,8 @@ aqc_rx_desc_read(struct aqc_desc *desc, struct aqc_rx_info *ri)
 	ri->hdr_len = _BITFIELD(desc->field1, AQC_RX_HDR_LEN_SHIFT,
 	    AQC_RX_HDR_LEN_MASK);
 	ri->sph = _BOOL(desc->field1, AQC_RX_SPH_MASK);
-	ri->rx_cntl = _BITFIELD(desc->field1, AQC_RX_RX_CNTL_SHIFT,
-	    AQC_RX_RX_CNTL_MASK);
+	ri->rx_cntl = _BITFIELD(desc->field1, AQC_RX_CNTL_SHIFT,
+	    AQC_RX_CNTL_MASK);
 	ri->rdm_err = _BOOL(desc->field1, AQC_RX_RDM_ERR_MASK);
 	ri->pkt_type = _BITFIELD(desc->field1, AQC_RX_PKT_TYPE_SHIFT,
 	    AQC_RX_PKT_TYPE_MASK);
@@ -238,10 +263,10 @@ aqc_rx_desc_read(struct aqc_desc *desc, struct aqc_rx_info *ri)
 	    AQC_RX_PKT_LEN_MASK);
 	ri->rsc_cnt = _BITFIELD(desc->field2, AQC_RX_RSC_CNT_SHIFT,
 	    AQC_RX_RSC_CNT_MASK);
-	ri->rx_e_stat = _BITFIELD(desc->field2, AQC_RX_RX_E_STAT_SHIFT,
-	    AQC_RX_RX_E_STAT_MASK);
-	ri->rx_e_stat = _BITFIELD(desc->field2, AQC_RX_RX_STAT_SHIFT,
-	    AQC_RX_RX_STAT_MASK);
+	ri->rx_e_stat = _BITFIELD(desc->field2, AQC_RX_E_STAT_SHIFT,
+	    AQC_RX_E_STAT_MASK);
+	ri->rx_e_stat = _BITFIELD(desc->field2, AQC_RX_STAT_SHIFT,
+	    AQC_RX_STAT_MASK);
 	ri->eop = _BOOL(desc->field2, AQC_RX_EOP_MASK);
 #undef	_BITFIELD
 #undef	_BOOL
@@ -431,26 +456,71 @@ aqc_isc_rxd_available(void *arg, uint16_t rxqid, qidx_t idx, qidx_t budget)
 	return (cnt);
 }
 
+static void
+aqc_rx_checksum(struct aqc_rx_info *ari, if_rxd_info_t ri)
+{
+
+	ri->iri_csum_flags = 0;
+
+	if ((ari->rx_cntl & AQC_RX_CNTL_IPV4_CSUM_EN) != 0) {
+		if ((ari->pkt_type & AQC_RX_PKT_TYPE_LOWER_MASK) ==
+		    AQC_RX_PKT_TYPE_LOWER_IPV4) {
+			ri->iri_csum_flags |= CSUM_IP_CHECKED;
+
+			if ((ari->rx_stat & AQC_RX_STAT_IPV4_CSUM_ERROR) == 0) {
+				ri->iri_csum_flags |= CSUM_IP_VALID;
+			}
+		}
+	}
+
+	if ((ari->rx_cntl & AQC_RX_CNTL_TCP_UDP_CSUM_EN) == 0) {
+		return;
+	}
+
+	if ((ari->pkt_type & AQC_RX_PKT_TYPE_UPPER_MASK) ==
+	    AQC_RX_PKT_TYPE_UPPER_TCP ||
+	    (ari->pkt_type & AQC_RX_PKT_TYPE_UPPER_MASK) ==
+	    AQC_RX_PKT_TYPE_UPPER_UDP) {
+		ri->iri_csum_flags |= CSUM_L4_CALC;
+		if ((ari->rx_stat & AQC_RX_STAT_L4_CSUM_ERROR) == 0) {
+			ri->iri_csum_flags |= CSUM_L4_VALID;
+			ri->iri_csum_data = htons(0xffff);
+		}
+	}
+}
+
 static int
 aqc_isc_rxd_pkt_get(void *arg, if_rxd_info_t ri)
 {
 	struct aqc_softc *softc;
 	struct aqc_ring *ring;
 	struct aqc_rx_info ari;
+	struct ifnet *ifp;
 	int cidx, i;
 
 	softc = arg;
 	ring = &softc->rx_ring[ri->iri_qsidx];
 	cidx = ri->iri_cidx;
+	ifp = iflib_get_ifp(softc->ctx);
 	i = 0;
 
 	do {
 		aqc_rx_desc_read(&ring->descriptors[cidx], &ari);
 
+		if (ari.rdm_err != 0) {
+			return (EBADMSG);
+		}
+		if ((ari.rx_stat & AQC_RX_STAT_MAC_ERROR) != 0) {
+			return (EBADMSG);
+		}
 		ri->iri_len += ari.pkt_len;
 		ri->iri_frags[i].irf_flid = 0;
 		ri->iri_frags[i].irf_idx = cidx;
 		ri->iri_frags[i].irf_len = ari.pkt_len;
+
+		if ((ifp->if_capenable & IFCAP_RXCSUM) != 0) {
+			aqc_rx_checksum(&ari, ri);
+		}
 
 		i++;
 		cidx++;

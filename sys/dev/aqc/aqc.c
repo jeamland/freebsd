@@ -292,7 +292,7 @@ aqc_if_attach_pre(if_ctx_t ctx)
 	iflib_set_mac(ctx, softc->mac_addr);
 
 	scctx->isc_tx_csum_flags = 0;
-	scctx->isc_capenable = 0;
+	scctx->isc_capenable = IFCAP_RXCSUM | IFCAP_HWCSUM;
 
 	scctx->isc_tx_nsegments = 31,
 	scctx->isc_tx_tso_segments_max = 31;
@@ -604,7 +604,11 @@ aqc_if_attach_post(if_ctx_t ctx)
 	value |= AQC_INTR_MAP_FATAL_EN | (8 << AQC_INTR_MAP_FATAL_SHIFT);
 	aqc_hw_write(softc, AQC_REG_INTR_GENERAL_MAP_1, value);
 
-	/* XXX hardware offload */
+	/* XXX TX checksum offloads */
+
+	/* XXX LSO */
+
+	/* XXX LRO */
 
 	return (rc);
 }
@@ -743,10 +747,12 @@ aqc_if_init(if_ctx_t ctx)
 {
 	struct aqc_softc *softc;
 	struct ifmediareq ifmr;
+	struct ifnet *ifp;
 	uint32_t value;
 	int i;
 
 	softc = iflib_get_softc(ctx);
+	ifp = iflib_get_ifp(softc->ctx);
 
 	aqc_if_media_status(ctx, &ifmr);
 
@@ -777,6 +783,14 @@ aqc_if_init(if_ctx_t ctx)
 	value = aqc_hw_read(softc, AQC_REG_RX_FILTER_CONTROL_1);
 	value |= AQC_RX_FILTER_BC_EN;
 	aqc_hw_write(softc, AQC_REG_RX_FILTER_CONTROL_1, value);
+
+	value = aqc_hw_read(softc, AQC_REG_RX_PROTO_OFFLOAD_CONTROL);
+	if ((if_getcapenable(ifp) & IFCAP_RXCSUM) != 0) {
+		value |= AQC_RX_IPV4_CHK_EN|AQC_RX_L4_CHK_EN;
+	} else {
+		value &= ~(AQC_RX_IPV4_CHK_EN|AQC_RX_L4_CHK_EN);
+	}
+	aqc_hw_write(softc, AQC_REG_RX_PROTO_OFFLOAD_CONTROL, value);
 }
 
 static void
