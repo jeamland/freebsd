@@ -303,6 +303,7 @@ aqc_isc_txd_encap(void *arg, if_pkt_info_t pi)
 	bus_dma_segment_t *segs;
 	qidx_t i, pidx;
 	uint32_t pay_len, eop;
+	uint8_t tx_cmd;
 
 	softc = arg;
 	ring = &softc->tx_ring[pi->ipi_qsidx];
@@ -310,15 +311,23 @@ aqc_isc_txd_encap(void *arg, if_pkt_info_t pi)
 	pidx = pi->ipi_pidx;
 
 	pay_len = pi->ipi_len;
+	tx_cmd = AQC_TX_CMD_DESC_WRITEBACK|AQC_TX_CMD_MAC_FCS_INSERT;
 	eop = 0;
+
 
 	for (i = 0; i < pi->ipi_nsegs; i++) {
 		if (i == pi->ipi_nsegs - 1)
 			eop = 1;
 
+		if ((pi->ipi_csum_flags & CSUM_IP) != 0) {
+			tx_cmd |= AQC_TX_CMD_IPV4_CSUM;
+		}
+		if ((pi->ipi_csum_flags & (CSUM_IP_UDP|CSUM_IP_TCP)) != 0) {
+			tx_cmd |= AQC_TX_CMD_TCP_UDP_CSUM;
+		}
+
 		aqc_tx_desc_packet(&ring->descriptors[pidx], segs[i].ds_addr,
-		    pay_len, 0, 0, AQC_TX_CMD_DESC_WRITEBACK, eop,
-		    segs[i].ds_len);
+		    pay_len, 0, 0, tx_cmd, eop, segs[i].ds_len);
 
 		if (i == 0)
 			pay_len = 0;
