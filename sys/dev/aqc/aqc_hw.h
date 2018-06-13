@@ -56,6 +56,8 @@
 
 #define	AQC_MAX_FRAME_SIZE	16384
 
+#define	AQC_HW_MAX_VLANS	16
+
 struct aqc_ring;
 struct aqc_softc;
 
@@ -63,6 +65,7 @@ int		aqc_hw_probe(struct aqc_softc *);
 int		aqc_hw_set_mac(struct aqc_softc *);
 int		aqc_hw_soft_reset(struct aqc_softc *);
 int		aqc_hw_update_stats(struct aqc_softc *);
+void		aqc_hw_program_vlan_filter(struct aqc_softc *);
 
 uint32_t	aqc_hw_read(struct aqc_softc *, uint32_t);
 void		aqc_hw_write(struct aqc_softc *, uint32_t, uint32_t);

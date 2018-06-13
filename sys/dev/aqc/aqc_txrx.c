@@ -303,7 +303,7 @@ aqc_isc_txd_encap(void *arg, if_pkt_info_t pi)
 	bus_dma_segment_t *segs;
 	qidx_t i, pidx;
 	uint32_t pay_len, eop;
-	uint8_t tx_cmd;
+	uint8_t tx_cmd, ct_en, ct_idx;
 
 	softc = arg;
 	ring = &softc->tx_ring[pi->ipi_qsidx];
@@ -313,7 +313,18 @@ aqc_isc_txd_encap(void *arg, if_pkt_info_t pi)
 	pay_len = pi->ipi_len;
 	tx_cmd = AQC_TX_CMD_DESC_WRITEBACK|AQC_TX_CMD_MAC_FCS_INSERT;
 	eop = 0;
+	ct_en = 0;
+	ct_idx = 0;
 
+	if ((pi->ipi_mflags & M_VLANTAG) != 0) {
+		aqc_tx_desc_context(&ring->descriptors[pidx], 0, 0, 0,
+			0, 0, pi->ipi_vtag, ct_idx);
+		tx_cmd |= AQC_TX_CMD_VLAN_INSERT;
+		ct_en = 1;
+		pidx++;
+		if (pidx >= ring->ndesc)
+			pidx = 0;
+	}
 
 	for (i = 0; i < pi->ipi_nsegs; i++) {
 		if (i == pi->ipi_nsegs - 1)
@@ -327,7 +338,7 @@ aqc_isc_txd_encap(void *arg, if_pkt_info_t pi)
 		}
 
 		aqc_tx_desc_packet(&ring->descriptors[pidx], segs[i].ds_addr,
-		    pay_len, 0, 0, tx_cmd, eop, segs[i].ds_len);
+		    pay_len, ct_en, ct_idx, tx_cmd, eop, segs[i].ds_len);
 
 		if (i == 0)
 			pay_len = 0;
@@ -522,6 +533,7 @@ aqc_isc_rxd_pkt_get(void *arg, if_rxd_info_t ri)
 		if ((ari.rx_stat & AQC_RX_STAT_MAC_ERROR) != 0) {
 			return (EBADMSG);
 		}
+
 		ri->iri_len += ari.pkt_len;
 		ri->iri_frags[i].irf_flid = 0;
 		ri->iri_frags[i].irf_idx = cidx;
@@ -529,6 +541,10 @@ aqc_isc_rxd_pkt_get(void *arg, if_rxd_info_t ri)
 
 		if ((ifp->if_capenable & IFCAP_RXCSUM) != 0) {
 			aqc_rx_checksum(&ari, ri);
+		}
+		if ((ari.pkt_type & AQC_RX_PKT_TYPE_VLAN_MASK) != 0) {
+			ri->iri_flags |= M_VLANTAG;
+			ri->iri_vtag = ari.vlan_tag;
 		}
 
 		i++;

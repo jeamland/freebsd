@@ -468,3 +468,39 @@ aqc_hw_soft_reset_flb(struct aqc_softc *softc)
 
 	return (0);
 }
+
+void
+aqc_hw_program_vlan_filter(struct aqc_softc *softc)
+{
+	struct aqc_vlan_tag *tag;
+	uint32_t num_vlan_tags, value, filter;
+
+	num_vlan_tags = 0;
+	SLIST_FOREACH(tag, &softc->vlan_tags, next)
+		num_vlan_tags++;
+
+	value = aqc_hw_read(softc, AQC_REG_RX_VLAN_CONTROL_1);
+	value &= ~AQC_RX_VLAN_UNTAGGED_ACT_MASK;
+	value |= AQC_RX_VLAN_ACCEPT_UNTAGGED|AQC_RX_VLAN_UNTAGGED_ACT_HOST;
+	if (num_vlan_tags > AQC_HW_MAX_VLANS) {
+		value |= AQC_RX_VLAN_PROMISC_MODE;
+		tag = NULL;
+	} else {
+		value &= ~AQC_RX_VLAN_PROMISC_MODE;
+		tag = SLIST_FIRST(&softc->vlan_tags);
+	}
+	aqc_hw_write(softc, AQC_REG_RX_VLAN_CONTROL_1, value);
+
+	for (filter = 0; filter < AQC_HW_MAX_VLANS; filter++) {
+		if (tag == NULL) {
+			aqc_hw_write(softc, AQC_REG_RX_VLAN_FILTER(filter), 0);
+			continue;
+		}
+
+		value = AQC_RX_VLAN_FILTER_EN|AQC_RX_VLAN_FILTER_ACT_HOST;
+		value |= tag->tag;
+		aqc_hw_write(softc, AQC_REG_RX_VLAN_FILTER(filter), value);
+
+		tag = SLIST_NEXT(tag, next);
+	}
+}

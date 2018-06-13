@@ -153,6 +153,11 @@ struct aqc_ring {
 	struct aqc_desc		*descriptors;
 };
 
+struct aqc_vlan_tag {
+	SLIST_ENTRY(aqc_vlan_tag) next;
+	uint16_t	tag;
+};
+
 struct aqc_softc {
 	device_t		dev;
 	if_ctx_t		ctx;
@@ -183,6 +188,8 @@ struct aqc_softc {
 
 	struct aqc_stats	stats;
 	struct aqc_fw_stats	fw_stats;
+
+	SLIST_HEAD(vlan_head, aqc_vlan_tag) vlan_tags;
 };
 
 extern struct if_txrx aqc_txrx;

@@ -293,7 +293,8 @@ aqc_if_attach_pre(if_ctx_t ctx)
 
 	scctx->isc_tx_csum_flags = CSUM_TCP | CSUM_UDP;
 	scctx->isc_capenable = IFCAP_RXCSUM | IFCAP_TXCSUM | IFCAP_HWCSUM |
-	    IFCAP_JUMBO_MTU;
+	    IFCAP_JUMBO_MTU | IFCAP_VLAN_HWFILTER | IFCAP_VLAN_MTU |
+	    IFCAP_VLAN_HWTAGGING | IFCAP_VLAN_HWCSUM;
 
 	scctx->isc_tx_nsegments = 31,
 	scctx->isc_tx_tso_segments_max = 31;
@@ -311,6 +312,8 @@ aqc_if_attach_pre(if_ctx_t ctx)
 
 	/* iflib will map and release this bar */
 	scctx->isc_msix_bar = pci_msix_table_bar(softc->dev);
+
+	SLIST_INIT(&softc->vlan_tags);
 
 	return (rc);
 
@@ -556,6 +559,7 @@ static int
 aqc_if_detach(if_ctx_t ctx)
 {
 	struct aqc_softc *softc;
+	struct aqc_vlan_tag *tag, *tmp;
 	int i;
 
 	softc = iflib_get_softc(ctx);
@@ -568,6 +572,9 @@ aqc_if_detach(if_ctx_t ctx)
 	if (softc->mmio_res != NULL)
 		bus_release_resource(softc->dev, SYS_RES_MEMORY,
 		    softc->mmio_rid, softc->mmio_res);
+
+	SLIST_FOREACH_SAFE(tag, &softc->vlan_tags, next, tmp)
+		free(tag, M_DEVBUF);
 
 	return (0);
 }
@@ -738,6 +745,8 @@ aqc_if_init(if_ctx_t ctx)
 		value &= ~(AQC_TX_IPV4_CHK_EN|AQC_TX_L4_CHK_EN);
 	}
 	aqc_hw_write(softc, AQC_REG_TX_PROTO_OFFLOAD_CONTROL, value);
+
+	aqc_hw_program_vlan_filter(softc);
 }
 
 static void
@@ -1077,15 +1086,34 @@ fail:
 static void
 aqc_if_vlan_register(if_ctx_t ctx, uint16_t vtag)
 {
+	struct aqc_softc *softc;
+	struct aqc_vlan_tag *new_tag;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	softc = iflib_get_softc(ctx);
+
+	new_tag = malloc(sizeof(struct aqc_vlan_tag), M_DEVBUF, M_NOWAIT);
+	if (new_tag == NULL)
+		return;
+	new_tag->tag = vtag;
+	SLIST_INSERT_HEAD(&softc->vlan_tags, new_tag, next);
 }
 
 static void
 aqc_if_vlan_unregister(if_ctx_t ctx, uint16_t vtag)
 {
+	struct aqc_softc *softc;
+	struct aqc_vlan_tag *vlan_tag;
 
-	AQC_XXX_UNIMPLEMENTED_FUNCTION;
+	softc = iflib_get_softc(ctx);
+
+	SLIST_FOREACH(vlan_tag, &softc->vlan_tags, next) {
+		if (vlan_tag->tag == vtag) {
+			SLIST_REMOVE(&softc->vlan_tags, vlan_tag, aqc_vlan_tag,
+			    next);
+			free(vlan_tag, M_DEVBUF);
+			break;
+		}
+	}
 }
 
 /* ioctl */
