@@ -205,6 +205,13 @@ struct aqc_rx_info {
 #define	AQC_RX_PKT_TYPE_VLAN_TAGGED	(0x1 << AQC_RX_PKT_TYPE_VLAN_SHIFT)
 #define	AQC_RX_PKT_TYPE_VLAN_2TAGGED	(0x2 << AQC_RX_PKT_TYPE_VLAN_SHIFT)
 	uint8_t		rss_type;
+#define	AQC_RX_RSS_TYPE_NONE		0x0
+#define	AQC_RX_RSS_TYPE_IPV4		0x2
+#define	AQC_RX_RSS_TYPE_IPV6		0x3
+#define	AQC_RX_RSS_TYPE_IPV4_TCP	0x4
+#define	AQC_RX_RSS_TYPE_IPV6_TCP	0x5
+#define	AQC_RX_RSS_TYPE_IPV4_UDP	0x6
+#define	AQC_RX_RSS_TYPE_IPV6_UDP	0x7
 	uint16_t	vlan_tag;
 	uint16_t	next_desp;
 	size_t		pkt_len;
@@ -545,6 +552,34 @@ aqc_isc_rxd_pkt_get(void *arg, if_rxd_info_t ri)
 		if ((ari.pkt_type & AQC_RX_PKT_TYPE_VLAN_MASK) != 0) {
 			ri->iri_flags |= M_VLANTAG;
 			ri->iri_vtag = ari.vlan_tag;
+		}
+
+		switch (ari.rss_type) {
+		case AQC_RX_RSS_TYPE_IPV4:
+			ri->iri_rsstype = M_HASHTYPE_RSS_IPV4;
+			break;
+		case AQC_RX_RSS_TYPE_IPV6:
+			ri->iri_rsstype = M_HASHTYPE_RSS_IPV6;
+			break;
+		case AQC_RX_RSS_TYPE_IPV4_TCP:
+			ri->iri_rsstype = M_HASHTYPE_RSS_TCP_IPV4;
+			break;
+		case AQC_RX_RSS_TYPE_IPV6_TCP:
+			ri->iri_rsstype = M_HASHTYPE_RSS_TCP_IPV6;
+			break;
+		case AQC_RX_RSS_TYPE_IPV4_UDP:
+			ri->iri_rsstype = M_HASHTYPE_RSS_UDP_IPV4;
+			break;
+		case AQC_RX_RSS_TYPE_IPV6_UDP:
+			ri->iri_rsstype = M_HASHTYPE_RSS_UDP_IPV6;
+			break;
+		case AQC_RX_RSS_TYPE_NONE:
+		default:
+			ri->iri_rsstype = M_HASHTYPE_NONE;
+			break;
+		}
+		if (ri->iri_rsstype != M_HASHTYPE_NONE) {
+			ri->iri_flowid = le32toh(ari.rss_hash);
 		}
 
 		i++;
