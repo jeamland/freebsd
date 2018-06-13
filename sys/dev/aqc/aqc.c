@@ -308,69 +308,9 @@ aqc_if_attach_pre(if_ctx_t ctx)
 
 	scctx->isc_ntxqsets_max = softc->tx_rings;
 	scctx->isc_nrxqsets_max = softc->rx_rings;
-	/* Fill in scctx stuff. */
-	/* XXX THIS STUFF IS NOT RIGHT YET */
-	#if 0
-
-	scctx->isc_tx_csum_flags = (CSUM_IP | CSUM_TCP | CSUM_UDP |
-	    CSUM_TCP_IPV6 | CSUM_UDP_IPV6 | CSUM_TSO);
-	scctx->isc_capenable =
-	    /* These are translated to hwassit bits */
-	    IFCAP_TXCSUM | IFCAP_TXCSUM_IPV6 | IFCAP_TSO4 | IFCAP_TSO6 |
-	    /* These are checked by iflib */
-	    IFCAP_LRO | IFCAP_VLAN_HWFILTER |
-	    /* These are part of the iflib mask */
-	    IFCAP_RXCSUM | IFCAP_RXCSUM_IPV6 | IFCAP_VLAN_MTU |
-	    IFCAP_VLAN_HWTAGGING | IFCAP_VLAN_HWTSO |
-	    /* These likely get lost... */
-	    IFCAP_VLAN_HWCSUM | IFCAP_JUMBO_MTU;
-	
-	if (bnxt_wol_supported(softc))
-		scctx->isc_capenable |= IFCAP_WOL_MAGIC;
-	
-	/* Now set up iflib sc */
-	scctx->isc_tx_nsegments = 31,
-	scctx->isc_tx_tso_segments_max = 31;
-	scctx->isc_tx_tso_size_max = BNXT_TSO_SIZE;
-	scctx->isc_tx_tso_segsize_max = BNXT_TSO_SIZE;
-	scctx->isc_vectors = softc->func.max_cp_rings;
-	scctx->isc_min_frame_size = BNXT_MIN_FRAME_SIZE;
-	scctx->isc_txrx = &bnxt_txrx;
-
-	if (scctx->isc_nrxd[0] <
-	    ((scctx->isc_nrxd[1] * 4) + scctx->isc_nrxd[2]))
-		device_printf(softc->dev,
-		    "WARNING: nrxd0 (%d) should be at least 4 * nrxd1 (%d) + nrxd2 (%d).  Driver may be unstable\n",
-		    scctx->isc_nrxd[0], scctx->isc_nrxd[1], scctx->isc_nrxd[2]);
-	if (scctx->isc_ntxd[0] < scctx->isc_ntxd[1] * 2)
-		device_printf(softc->dev,
-		    "WARNING: ntxd0 (%d) should be at least 2 * ntxd1 (%d).  Driver may be unstable\n",
-		    scctx->isc_ntxd[0], scctx->isc_ntxd[1]);
-	scctx->isc_txqsizes[0] = sizeof(struct cmpl_base) * scctx->isc_ntxd[0];
-	scctx->isc_txqsizes[1] = sizeof(struct tx_bd_short) *
-	    scctx->isc_ntxd[1];
-	scctx->isc_rxqsizes[0] = sizeof(struct cmpl_base) * scctx->isc_nrxd[0];
-	scctx->isc_rxqsizes[1] = sizeof(struct rx_prod_pkt_bd) *
-	    scctx->isc_nrxd[1];
-	scctx->isc_rxqsizes[2] = sizeof(struct rx_prod_pkt_bd) *
-	    scctx->isc_nrxd[2];
-
-	scctx->isc_nrxqsets_max = min(pci_msix_count(softc->dev)-1,
-	    softc->fn_qcfg.alloc_completion_rings - 1);
-	scctx->isc_nrxqsets_max = min(scctx->isc_nrxqsets_max,
-	    softc->fn_qcfg.alloc_rx_rings);
-	scctx->isc_nrxqsets_max = min(scctx->isc_nrxqsets_max,
-	    softc->fn_qcfg.alloc_vnics);
-	scctx->isc_ntxqsets_max = min(softc->fn_qcfg.alloc_tx_rings,
-	    softc->fn_qcfg.alloc_completion_rings - scctx->isc_nrxqsets_max - 1);
-
-	scctx->isc_rss_table_size = HW_HASH_INDEX_SIZE;
-	scctx->isc_rss_table_mask = scctx->isc_rss_table_size - 1;
-	#endif
 
 	/* iflib will map and release this bar */
 	scctx->isc_msix_bar = pci_msix_table_bar(softc->dev);
-	/* XXX END OF THIS STUFF IS NOT RIGHT YET */
 
 	return (rc);
 
