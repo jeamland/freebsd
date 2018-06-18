@@ -310,7 +310,8 @@ aqc_isc_txd_encap(void *arg, if_pkt_info_t pi)
 	bus_dma_segment_t *segs;
 	qidx_t i, pidx;
 	uint32_t pay_len, eop;
-	uint8_t tx_cmd, ct_en, ct_idx;
+	uint16_t vlan_tag;
+	uint8_t tx_cmd, ct_en, ct_idx, ct_cmd;
 
 	softc = arg;
 	ring = &softc->tx_ring[pi->ipi_qsidx];
@@ -323,11 +324,49 @@ aqc_isc_txd_encap(void *arg, if_pkt_info_t pi)
 	ct_en = 0;
 	ct_idx = 0;
 
-	if ((pi->ipi_mflags & M_VLANTAG) != 0) {
+
+	if ((pi->ipi_csum_flags & CSUM_TSO) != 0) {
+		ct_idx = 1;
+		ct_cmd = AQC_TX_CT_CMD_L2_TYPE_802_3|AQC_TX_CT_CMD_L4_TYPE_TCP;
+
+		switch (pi->ipi_etype) {
+		case ETHERTYPE_IPV6:
+			ct_cmd |= AQC_TX_CT_CMD_L3_TYPE_IPV6;
+			break;
+		case ETHERTYPE_IP:
+			ct_cmd |= AQC_TX_CT_CMD_L3_TYPE_IPV4;
+			tx_cmd |= AQC_TX_CMD_IPV4_CSUM;
+			break;
+		default:
+			panic("%s: CSUM_TSO but no supported IP version "
+			    "(0x%04x)", __func__, ntohs(pi->ipi_etype));
+			break;
+		}
+
+		if ((pi->ipi_mflags & M_VLANTAG) != 0) {
+			vlan_tag = pi->ipi_vtag;
+			tx_cmd |= AQC_TX_CMD_VLAN_INSERT;
+		} else {
+			vlan_tag = 0;
+		}
+
+		aqc_tx_desc_context(&ring->descriptors[pidx], pi->ipi_tso_segsz,
+		    pi->ipi_tcp_hlen, pi->ipi_ip_hlen, pi->ipi_ehdrlen, ct_cmd,
+		    vlan_tag, ct_idx);
+
+		ct_en = 1;
+		tx_cmd |= AQC_TX_CMD_TCP_UDP_CSUM|AQC_TX_CMD_LSO;
+
+		pidx++;
+		if (pidx >= ring->ndesc)
+			pidx = 0;
+	} else if ((pi->ipi_mflags & M_VLANTAG) != 0) {
 		aqc_tx_desc_context(&ring->descriptors[pidx], 0, 0, 0,
 			0, 0, pi->ipi_vtag, ct_idx);
+
 		tx_cmd |= AQC_TX_CMD_VLAN_INSERT;
 		ct_en = 1;
+
 		pidx++;
 		if (pidx >= ring->ndesc)
 			pidx = 0;

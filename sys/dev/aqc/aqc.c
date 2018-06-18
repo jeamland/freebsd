@@ -548,10 +548,6 @@ aqc_if_attach_post(if_ctx_t ctx)
 	value |= AQC_INTR_MAP_FATAL_EN | (8 << AQC_INTR_MAP_FATAL_SHIFT);
 	aqc_hw_write(softc, AQC_REG_INTR_GENERAL_MAP_1, value);
 
-	/* XXX LSO */
-
-	/* XXX LRO */
-
 	return (rc);
 }
 
@@ -745,6 +741,14 @@ aqc_if_init(if_ctx_t ctx)
 		value &= ~(AQC_TX_IPV4_CHK_EN|AQC_TX_L4_CHK_EN);
 	}
 	aqc_hw_write(softc, AQC_REG_TX_PROTO_OFFLOAD_CONTROL, value);
+
+	value = (0xff6 << AQC_TX_LSO_TCP_FLAG_FIRST_SHIFT) |
+	    (0xff6 << AQC_TX_LSO_TCP_FLAG_MID_SHIFT);
+	aqc_hw_write(softc, AQC_REG_TX_LSO_TCP_CONTROL_1, value);
+	aqc_hw_write(softc, AQC_REG_TX_LSO_TCP_CONTROL_2,
+	    (0xff7 << AQC_TX_LSO_TCP_FLAG_LAST_SHIFT));
+
+	aqc_hw_write(softc, AQC_REG_TX_LSO_CONTROL_1, AQC_TX_LSO_EN);
 
 	aqc_hw_program_vlan_filter(softc);
 }
