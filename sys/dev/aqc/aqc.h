@@ -31,6 +31,8 @@
 #ifndef	_AQC_H_
 #define	_AQC_H_
 
+#include "aqc_hw.h"
+
 #define	AQC_XXX_UNIMPLEMENTED_FUNCTION	do {				\
 	printf("aqc: unimplemented function: %s@%s:%d\n", __func__, 	\
 	    __FILE__, __LINE__);					\
@@ -190,6 +192,8 @@ struct aqc_softc {
 	struct aqc_fw_stats	fw_stats;
 
 	SLIST_HEAD(vlan_head, aqc_vlan_tag) vlan_tags;
+
+	uint8_t			rss_key[AQC_HW_RSS_HASH_KEY_SIZE];
 };
 
 extern struct if_txrx aqc_txrx;

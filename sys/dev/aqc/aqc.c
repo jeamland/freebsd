@@ -315,6 +315,8 @@ aqc_if_attach_pre(if_ctx_t ctx)
 
 	SLIST_INIT(&softc->vlan_tags);
 
+	arc4rand(softc->rss_key, AQC_HW_RSS_HASH_KEY_SIZE, 0);
+
 	return (rc);
 
 fail:
@@ -751,6 +753,8 @@ aqc_if_init(if_ctx_t ctx)
 	aqc_hw_write(softc, AQC_REG_TX_LSO_CONTROL_1, AQC_TX_LSO_EN);
 
 	aqc_hw_program_vlan_filter(softc);
+
+	aqc_hw_rss_init(softc);
 }
 
 static void

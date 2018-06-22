@@ -504,3 +504,49 @@ aqc_hw_program_vlan_filter(struct aqc_softc *softc)
 		tag = SLIST_NEXT(tag, next);
 	}
 }
+
+void
+aqc_hw_rss_init(struct aqc_softc *softc)
+{
+	uint32_t	value;
+	uint16_t	redir_table[(AQC_HW_RSS_REDIR_MAX *
+			    AQC_HW_RSS_REDIR_BITS / sizeof(uint16_t))];
+	int		i, j;
+
+	for (i = 0; i < (AQC_HW_RSS_HASH_KEY_SIZE / sizeof(uint32_t)); i++) {
+		memcpy(&value, &softc->rss_key[i * sizeof(uint32_t)],
+		    sizeof(uint32_t));
+		aqc_hw_write(softc, AQC_REG_RX_RSS_KEY_DATA, value);
+		aqc_hw_write(softc, AQC_REG_RX_RSS_KEY_ADDRESS,
+		    AQC_RX_RSS_KEY_WR_EN|i);
+
+		for (j = 0; j < 1000; j++) {
+			value = aqc_hw_read(softc, AQC_REG_RX_RSS_KEY_ADDRESS);
+			if ((value & AQC_RX_RSS_KEY_WR_EN) == 0)
+				break;
+			DELAY(10);
+		}
+	}
+
+	for (i = 0; i < AQC_HW_RSS_REDIR_MAX; i++) {
+		(*(uint32_t *)(&redir_table[i * 3 / 16])) |=
+		    (i % AQC_HW_RSS_QUEUE_COUNT) << ((i * 3) & 0xf);
+	}
+
+	for (i = 0;
+	    i < AQC_HW_RSS_REDIR_MAX * AQC_HW_RSS_REDIR_BITS / sizeof(uint16_t);
+	    i++) {
+		aqc_hw_write(softc, AQC_REG_RX_RSS_REDIR_TABLE_DATA,
+		    redir_table[i]);
+		aqc_hw_write(softc, AQC_REG_RX_RSS_REDIR_TABLE_ADDRESS,
+		    AQC_RX_RSS_REDIR_TABLE_WR_EN | i);
+
+		for (j = 0; j < 1000; j++) {
+			value = aqc_hw_read(softc,
+			    AQC_REG_RX_RSS_REDIR_TABLE_ADDRESS);
+			if ((value & AQC_RX_RSS_REDIR_TABLE_WR_EN) == 0)
+				break;
+			DELAY(10);
+		}
+	}
+}
